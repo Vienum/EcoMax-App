@@ -2,6 +2,25 @@ import { Card, Col, Row, Select, Tooltip } from "antd";
 import React, { useEffect, useState } from "react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Legend, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
+export const calculateMergedHourly = (
+  hourlyTotals: { time: string; value: number }[],
+  kitchenHourly: { kitchen: number }[],
+  livingHourly: { living: number }[],
+  bedroomHourly: { bedroom: number }[]
+) => {
+  return hourlyTotals.map((t, i) => ({
+    ...t,
+    kitchen: kitchenHourly[i]?.kitchen ?? 0,
+    living: livingHourly[i]?.living ?? 0,
+    bedroom: bedroomHourly[i]?.bedroom ?? 0,
+  }));
+};
+
+module.exports = { calculateMergedHourly };
+
+
+
+
 const Dashboard = () => {
 
   const [roomSelection, setRoomSelection] = React.useState('kitchen')
@@ -21,12 +40,8 @@ const Dashboard = () => {
     fetch("http://localhost:3001/api/bedroom").then(r => r.json()).then(setBedroomHourly);
   }, []);
 
-  const mergedHourly = hourlyTotals.map((t, i) => ({
-    ...t,
-    kitchen: kitchenHourly[i]?.kitchen ?? 0,
-    living: livingHourly[i]?.living ?? 0,
-    bedroom: bedroomHourly[i]?.bedroom ?? 0,
-  }));
+  const mergedHourly = calculateMergedHourly(hourlyTotals, kitchenHourly, livingHourly, bedroomHourly);
+
 
   const COLORS = ["#8884d8", "#82ca9d", "#ffc658", "#ff7f7f"];
 
@@ -51,7 +66,7 @@ const Dashboard = () => {
               <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="45%" outerRadius={160} innerRadius={80} label>
                 {pieData.map((entry, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
               </Pie>
-              <Tooltip formatter={(v) => `${v} kWh`} contentStyle={{ backgroundColor: "#0b0b0b" }} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#fff" }} />
+              <Tooltip formatter={(v: any) => `${v} kWh`} contentStyle={{ backgroundColor: "#0b0b0b" }} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#fff" }} />
               <Legend formatter={(v) => <span style={{ color: "#fff" }}>{v}</span>} verticalAlign="bottom" />
             </PieChart>
           </ResponsiveContainer>
@@ -97,7 +112,7 @@ const Dashboard = () => {
                         <CartesianGrid stroke="rgba(255,255,255,0.10)" />
                         <XAxis dataKey="time" stroke="#fff" tick={{ fill: "#fff", fontSize: 10 }} />
                         <YAxis stroke="#fff" tick={{ fill: "#fff", fontSize: 10 }} />
-                        <Tooltip formatter={(v) => `${v} kWh`} contentStyle={{ backgroundColor: "#0b0b0b" }} itemStyle={{ color: "#fff" }} />
+                        <Tooltip formatter={(v: any) => `${v} kWh`} contentStyle={{ backgroundColor: "#0b0b0b" }} itemStyle={{ color: "#fff" }} />
                         <Line type="monotone" dataKey="kitchen" stroke={COLORS[0]} strokeWidth={2} dot={{ r: 2 }} />
                       </LineChart>
                     </ResponsiveContainer>
@@ -113,7 +128,7 @@ const Dashboard = () => {
                         <CartesianGrid stroke="rgba(255,255,255,0.10)" />
                         <XAxis dataKey="time" stroke="#fff" tick={{ fill: "#fff", fontSize: 10 }} />
                         <YAxis stroke="#fff" tick={{ fill: "#fff", fontSize: 10 }} />
-                        <Tooltip formatter={(v) => `${v} kWh`} contentStyle={{ backgroundColor: "#0b0b0b" }} itemStyle={{ color: "#fff" }} />
+                        <Tooltip formatter={(v: any) => `${v} kWh`} contentStyle={{ backgroundColor: "#0b0b0b" }} itemStyle={{ color: "#fff" }} />
                         <Line type="monotone" dataKey="living" stroke={COLORS[1]} strokeWidth={2} dot={{ r: 2 }} />
                       </LineChart>
                     </ResponsiveContainer>
@@ -129,7 +144,7 @@ const Dashboard = () => {
                         <CartesianGrid stroke="rgba(255,255,255,0.10)" />
                         <XAxis dataKey="time" stroke="#fff" tick={{ fill: "#fff", fontSize: 10 }} />
                         <YAxis stroke="#fff" tick={{ fill: "#fff", fontSize: 10 }} />
-                        <Tooltip formatter={(v) => `${v} kWh`} contentStyle={{ backgroundColor: "#0b0b0b" }} itemStyle={{ color: "#fff" }} />
+                        <Tooltip formatter={(v: any) => `${v} kWh`} contentStyle={{ backgroundColor: "#0b0b0b" }} itemStyle={{ color: "#fff" }} />
                         <Line type="monotone" dataKey="bedroom" stroke={COLORS[2]} strokeWidth={2} dot={{ r: 2 }} />
                       </LineChart>
                     </ResponsiveContainer>
@@ -172,7 +187,7 @@ const Dashboard = () => {
                       label={{ value: "kWh", angle: -90, position: "insideLeft", fill: "#fff" }}
                     />
                     <Tooltip
-                      formatter={(v) => `${v} kWh`}
+                      formatter={(v: any) => `${v} kWh`}
                       contentStyle={{ backgroundColor: "#0b0b0b", borderColor: "#333" }}
                       itemStyle={{ color: "#fff" }}
                       labelStyle={{ color: "#fff" }}

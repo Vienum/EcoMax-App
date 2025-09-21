@@ -116,3 +116,5 @@ app.get("/api/bedroom", (req, res) => {
 });
 
 app.listen(3001, () => console.log("Server läuft auf 3001"));
+
+module.exports = app;
