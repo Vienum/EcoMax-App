@@ -1,4 +1,4 @@
-import { Card, Col, Row, Alert, Spin, Empty, Select } from "antd";
+import { Card, Col, Row, Alert, Spin, Empty, Select, Statistic, Progress } from "antd";
 import { useEffect, useState } from "react";
 import {
   ResponsiveContainer,
@@ -11,13 +11,19 @@ import {
   Bar,
   XAxis,
   YAxis,
-  CartesianGrid
+  CartesianGrid,
+  LineChart,
+  Line
 } from "recharts";
+import { ArrowUpOutlined, ArrowDownOutlined, ThunderboltOutlined } from '@ant-design/icons';
 
 const Dashboard = () => {
   const [pieData, setPieData] = useState([]);
+  const [hourlyData, setHourlyData] = useState([]);
+  const [summaryData, setSummaryData] = useState<any>(null);
   const [gsiData, setGsiData] = useState([]);
   const [gsiTimeRange, setGsiTimeRange] = useState('next24');
+  const [consumptionTimeRange, setConsumptionTimeRange] = useState('24h');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<any>(null);
 
@@ -37,46 +43,45 @@ const Dashboard = () => {
           'Authorization': `Bearer ${token}`
         };
 
-        // Fetch pie chart data
-        const pieResponse = await fetch("http://localhost:3001/api/pie", { headers });
+        // Fetch all dashboard data with time range parameter
+        const [summaryRes, pieRes, hourlyRes, gsiRes] = await Promise.all([
+          fetch(`http://localhost:3001/api/consumption/summary?range=${consumptionTimeRange}`, { headers }),
+          fetch(`http://localhost:3001/api/consumption/by-room?range=${consumptionTimeRange}`, { headers }),
+          fetch(`http://localhost:3001/api/consumption/hourly?range=${consumptionTimeRange}`, { headers }),
+          fetch("http://localhost:3001/api/gsi", { headers }).catch(() => null)
+        ]);
 
-        if (!pieResponse.ok) {
-          throw new Error("Failed to fetch energy data");
+        if (summaryRes.ok) {
+          const summary = await summaryRes.json();
+          setSummaryData(summary);
         }
 
-        const pieDataResult = await pieResponse.json();
-
-        // Check if we got data
-        if (pieDataResult && pieDataResult.length > 0) {
-          setPieData(pieDataResult);
-        } else {
-          setPieData([]);
+        if (pieRes.ok) {
+          const pie = await pieRes.json();
+          setPieData(pie);
         }
 
-        // Fetch GSI (Grünstromindex) data
-        try {
-          const gsiResponse = await fetch("http://localhost:3001/api/gsi", { headers });
+        if (hourlyRes.ok) {
+          const hourly = await hourlyRes.json();
+          setHourlyData(hourly);
+        }
 
-          if (gsiResponse.ok) {
-            const gsiResult = await gsiResponse.json();
+        // Fetch GSI data
+        if (gsiRes && gsiRes.ok) {
+          const gsiResult = await gsiRes.json();
 
-            // Store the full forecast data
-            if (gsiResult.forecast && Array.isArray(gsiResult.forecast)) {
-              const transformedGsi = gsiResult.forecast.map((item: any) => ({
-                time: new Date(item.timeStamp).toLocaleTimeString('de-DE', {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                }),
-                fullDate: new Date(item.timeStamp),
-                gsi: item.gsi,
-                co2: item.co2_g_standard
-              }));
-              setGsiData(transformedGsi);
-            }
+          if (gsiResult.forecast && Array.isArray(gsiResult.forecast)) {
+            const transformedGsi = gsiResult.forecast.map((item: any) => ({
+              time: new Date(item.timeStamp).toLocaleTimeString('de-DE', {
+                hour: '2-digit',
+                minute: '2-digit'
+              }),
+              fullDate: new Date(item.timeStamp),
+              gsi: item.gsi,
+              co2: item.co2_g_standard
+            }));
+            setGsiData(transformedGsi);
           }
-        } catch (gsiError) {
-          console.log("GSI data not available:", gsiError);
-          // Don't fail the whole dashboard if GSI fails
         }
 
         setLoading(false);
@@ -88,7 +93,7 @@ const Dashboard = () => {
     };
 
     fetchData();
-  }, []);
+  }, [consumptionTimeRange]); // Re-fetch when time range changes
 
   const COLORS = ["#8884d8", "#82ca9d", "#ffc658", "#ff7f7f", "#a28bd4", "#ff6b9d"];
 
@@ -138,14 +143,117 @@ const Dashboard = () => {
     );
   }
 
+  const isAboveAverage = summaryData?.percentage_difference > 0;
+  const progressPercent = summaryData
+    ? Math.min((summaryData.total_consumption / summaryData.average_consumption) * 100, 100)
+    : 0;
+
+  const getTimeRangeLabel = () => {
+    switch (consumptionTimeRange) {
+      case '24h': return 'Daily';
+      case '7d': return 'Weekly';
+      case '30d': return 'Monthly';
+      default: return 'Daily';
+    }
+  };
+
+  const getAverageDivisor = () => {
+    switch (consumptionTimeRange) {
+      case '24h': return '365 (daily)';
+      case '7d': return '52 (weekly)';
+      case '30d': return '12 (monthly)';
+      default: return '365';
+    }
+  };
+
   return (
     <div>
-      <h2 style={{ marginBottom: 24 }}>Energy Consumption Dashboard</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <h2 style={{ margin: 0 }}>Energy Consumption Dashboard</h2>
+        <Select
+          value={consumptionTimeRange}
+          onChange={setConsumptionTimeRange}
+          style={{ width: 180 }}
+          options={[
+            { value: '24h', label: 'Last 24 Hours' },
+            { value: '7d', label: 'Last 7 Days' },
+            { value: '30d', label: 'Last 30 Days' },
+          ]}
+        />
+      </div>
 
       <Row gutter={[16, 16]}>
+        {/* Summary Cards */}
+        <Col span={24} lg={8}>
+          <Card>
+            <Statistic
+              title="Your Total Consumption"
+              value={summaryData?.total_consumption.toFixed(2) || 0}
+              suffix="kWh"
+              prefix={<ThunderboltOutlined />}
+              valueStyle={{ color: '#1890ff' }}
+            />
+          </Card>
+        </Col>
+
+        <Col span={24} lg={8}>
+          <Card>
+            <Statistic
+              title={`${getTimeRangeLabel()} Household Average`}
+              value={summaryData?.average_consumption.toFixed(2) || 0}
+              suffix="kWh"
+              valueStyle={{ color: '#666' }}
+            />
+            <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
+              Based on {summaryData?.people_in_household || 0} {summaryData?.people_in_household === 1 ? 'person' : 'people'} × 1,500 kWh ÷ {getAverageDivisor()}
+            </div>
+          </Card>
+        </Col>
+
+        <Col span={24} lg={8}>
+          <Card>
+            <Statistic
+              title="Comparison to Average"
+              value={Math.abs(summaryData?.percentage_difference || 0)}
+              suffix="%"
+              prefix={isAboveAverage ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+              valueStyle={{ color: isAboveAverage ? '#cf1322' : '#3f8600' }}
+            />
+            <div style={{ marginTop: 8, fontSize: 12, color: isAboveAverage ? '#cf1322' : '#3f8600' }}>
+              {isAboveAverage ? 'Above' : 'Below'} average consumption
+            </div>
+          </Card>
+        </Col>
+
+        {/* Consumption Progress */}
+        <Col span={24}>
+          <Card title="Consumption vs. Average">
+            <Progress
+              percent={progressPercent}
+              strokeColor={progressPercent > 100 ? '#cf1322' : '#3f8600'}
+              format={() => `${summaryData?.total_consumption.toFixed(0) || 0} / ${summaryData?.average_consumption || 0} kWh`}
+            />
+            <div style={{ marginTop: 12, textAlign: 'center', fontSize: 14 }}>
+              {isAboveAverage ? (
+                <span style={{ color: '#cf1322' }}>
+                  💡 Tip: Try to reduce consumption during peak hours to save energy!
+                </span>
+              ) : (
+                <span style={{ color: '#3f8600' }}>
+                  ✅ Great job! You're consuming less energy than the average household!
+                </span>
+              )}
+            </div>
+          </Card>
+        </Col>
+
+        {/* Pie Chart - Room Breakdown */}
         <Col span={24} lg={12}>
           <Card
-            title="Total Energy Consumption by Room"
+            title={`Energy Consumption by Room - ${consumptionTimeRange === '24h' ? 'Last 24 Hours' :
+              consumptionTimeRange === '7d' ? 'Last 7 Days' :
+                'Last 30 Days'
+              }`}
             styles={{
               body: {
                 display: "flex",
@@ -166,7 +274,7 @@ const Dashboard = () => {
                     cy="50%"
                     outerRadius={120}
                     innerRadius={60}
-                    label={({ name, value }) => `${name}: ${value} kWh`}
+                    label={({ name, value }: any) => `${name}: ${value.toFixed(1)} kWh`}
                     labelLine={false}
                   >
                     {pieData.map((entry, idx) => (
@@ -174,7 +282,7 @@ const Dashboard = () => {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value: any) => `${value} kWh`}
+                    formatter={(value: any) => `${value.toFixed(2)} kWh`}
                   />
                   <Legend
                     verticalAlign="bottom"
@@ -184,80 +292,51 @@ const Dashboard = () => {
               </ResponsiveContainer>
             ) : (
               <Empty
-                description="No energy consumption data available yet"
+                description="No room data available yet"
                 style={{ marginTop: 60 }}
               />
             )}
           </Card>
         </Col>
 
+        {/* Hourly Consumption Line Chart */}
         <Col span={24} lg={12}>
           <Card
-            title="Energy Insights"
+            title={`${consumptionTimeRange === '24h' ? 'Hourly' : 'Daily'
+              } Consumption Pattern`}
             styles={{
               body: {
                 minHeight: "400px",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center"
               }
             }}
           >
-            {pieData.length > 0 ? (
-              <div>
-                <h3>Consumption Summary</h3>
-                <div style={{ marginTop: 20 }}>
-                  {pieData.map((room: any, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        padding: '12px',
-                        marginBottom: '8px',
-                        backgroundColor: '#f5f5f5',
-                        borderRadius: '6px',
-                        borderLeft: `4px solid ${COLORS[idx % COLORS.length]}`
-                      }}
-                    >
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <span style={{ fontWeight: 500 }}>{room.name}</span>
-                        <span style={{ fontSize: '18px', fontWeight: 'bold' }}>
-                          {room.value} kWh
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                  <div style={{
-                    marginTop: 20,
-                    padding: '16px',
-                    backgroundColor: '#e6f7ff',
-                    borderRadius: '6px',
-                    borderLeft: '4px solid #1890ff'
-                  }}>
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <span style={{ fontWeight: 600, fontSize: '16px' }}>Total Consumption</span>
-                      <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#1890ff' }}>
-                        {pieData.reduce((sum, room: any) => sum + room.value, 0).toFixed(2)} kWh
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            {hourlyData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={400}>
+                <LineChart data={hourlyData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="time" />
+                  <YAxis label={{ value: 'kWh', angle: -90, position: 'insideLeft' }} />
+                  <Tooltip formatter={(value: any) => `${value.toFixed(2)} kWh`} />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    stroke="#1890ff"
+                    strokeWidth={2}
+                    name="Consumption"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
             ) : (
               <Empty
-                description="Start tracking your energy consumption by adding devices in Room View"
+                description="No hourly data available yet"
+                style={{ marginTop: 60 }}
               />
             )}
           </Card>
         </Col>
 
+        {/* GSI Chart */}
         <Col span={24}>
           <Card
             title="Green Energy Index (Grünstromindex)"
@@ -307,17 +386,6 @@ const Dashboard = () => {
                 showIcon
               />
             )}
-          </Card>
-        </Col>
-
-        <Col span={24}>
-          <Card title="Additional Insights">
-            <Alert
-              message="Coming Soon"
-              description="Country/area average comparison will be displayed here."
-              type="info"
-              showIcon
-            />
           </Card>
         </Col>
       </Row>

@@ -84,13 +84,26 @@ const RoomView = () => {
         setIsModalOpen(false);
     };
 
-    const removeRoom = (targetKey: string) => {
-        const newRooms = rooms.filter((room) => room.room_id.toString() !== targetKey);
-        if (newRooms.length && activeKey === targetKey) {
-            setActiveKey(newRooms[0].room_id.toString());
+    const removeRoom = async (roomId: string) => {
+        try {
+            const res = await fetch(`http://localhost:3001/api/room/${roomId}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const json = await res.json();
+            if (res.ok) {
+                const newRooms = rooms.filter(r => r.room_id.toString() !== roomId);
+                setRooms(newRooms);
+                if (activeKey === roomId && newRooms.length) {
+                    setActiveKey(newRooms[newRooms.length - 1].room_id.toString());
+                }
+            } else {
+                message.error(json.error || 'Failed to delete room');
+            }
+        } catch (err) {
+            console.error(err);
+            message.error('Error deleting room');
         }
-        setRooms(newRooms);
-        // TODO: Add backend delete endpoint later
     };
 
     const addDevice = () => {

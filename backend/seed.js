@@ -121,53 +121,82 @@ async function seed() {
       db.run(`INSERT INTO devices (user_id, room_id, device_name, device_type) VALUES (2, 5, 'Washing Machine', 'Washer')`);
 
       // -----------------------------
-      // INSERT DEVICE READINGS
+      // INSERT DEVICE READINGS (30 DAYS)
       // -----------------------------
-      const generateHourlyData = (startHour = 10, values = []) => {
-        const readings = [];
-        for (let i = 0; i < 24; i++) {
-          const hour = (startHour + i) % 24;
-          readings.push({ hour, value: values[i] || 0 });
-        }
-        return readings;
+      
+      // Helper function to generate hourly data patterns
+      const generateHourlyPattern = (basePattern) => {
+        // Add some daily variation (±20%)
+        return basePattern.map(val => {
+          const variation = 0.8 + Math.random() * 0.4; // 0.8 to 1.2
+          return val * variation;
+        });
       };
 
-      const insertReading = (deviceId, data) => {
+      // Base patterns for each device (24 hours)
+      const lukasTV = [0.09,0.06,0.05,0.04,0.03,0.10,0.12,0.15,0.18,0.20,0.22,0.18,0.10,0.05,0.02,0.01,0.01,0.01,0.01,0.02,0.03,0.05,0.07,0.08];
+      const lukasPC = [0.20,0.15,0.10,0.05,0.10,0.25,0.30,0.35,0.40,0.45,0.50,0.40,0.30,0.20,0.05,0.02,0.01,0.01,0.02,0.05,0.10,0.15,0.18,0.20];
+      const lukasFridge = new Array(24).fill(0.10);
+
+      const sofiaTV = [0.08,0.05,0.04,0.04,0.05,0.08,0.10,0.12,0.15,0.20,0.18,0.15,0.08,0.04,0.02,0.01,0.01,0.01,0.01,0.02,0.03,0.05,0.06,0.07];
+      const sofiaStoveBase = new Array(24).fill(0); 
+      sofiaStoveBase[2]=0.20; sofiaStoveBase[8]=0.25; sofiaStoveBase[9]=0.20;
+      const sofiaOvenBase = new Array(24).fill(0); 
+      sofiaOvenBase[8]=0.50; sofiaOvenBase[9]=0.40;
+      const sofiaNightlightBase = new Array(24).fill(0); 
+      for(let h=10;h<=13;h++){sofiaNightlightBase[h]=0.02;} 
+      for(let h=14;h<=19;h++){sofiaNightlightBase[h]=0.03;}
+      const sofiaACBase = new Array(24).fill(0); 
+      sofiaACBase[12]=0.20; sofiaACBase[13]=0.20; 
+      for(let h=14;h<=19;h++){sofiaACBase[h]=0.25;} 
+      sofiaACBase[20]=0.15;
+      const sofiaWasherBase = new Array(24).fill(0); 
+      sofiaWasherBase[5]=0.50; sofiaWasherBase[6]=0.30;
+
+      const insertReadingsFor30Days = (deviceId, basePattern) => {
         const stmt = db.prepare(`INSERT INTO device_readings (device_id, timestamp, kwh) VALUES (?, ?, ?)`);
-        data.forEach(d => {
-          const timestamp = new Date();
-          timestamp.setHours(d.hour,0,0,0);
-          stmt.run(deviceId, timestamp.toISOString(), d.value);
-        });
+        
+        // Generate data for last 30 days
+        for (let day = 29; day >= 0; day--) {
+          const dailyPattern = generateHourlyPattern(basePattern);
+          
+          for (let hour = 0; hour < 24; hour++) {
+            const timestamp = new Date();
+            timestamp.setDate(timestamp.getDate() - day);
+            timestamp.setHours(hour, 0, 0, 0);
+            
+            stmt.run(deviceId, timestamp.toISOString(), dailyPattern[hour]);
+          }
+        }
+        
         stmt.finalize();
       };
 
-      // Lukas readings
-      insertReading(1, generateHourlyData(10, [0.09,0.06,0.05,0.04,0.03,0.10,0.12,0.15,0.18,0.20,0.22,0.18,0.10,0.05,0.02,0.01,0.01,0.01,0.01,0.02,0.03,0.05,0.07,0.08])); // TV
-      insertReading(2, generateHourlyData(10, [0.20,0.15,0.10,0.05,0.10,0.25,0.30,0.35,0.40,0.45,0.50,0.40,0.30,0.20,0.05,0.02,0.01,0.01,0.02,0.05,0.10,0.15,0.18,0.20])); // PC
-      insertReading(3, generateHourlyData(10, new Array(24).fill(0.10))); // Fridge
+      // Insert readings for all devices
+      console.log("Generating 30 days of device readings...");
+      
+      // Lukas devices
+      insertReadingsFor30Days(1, lukasTV);
+      insertReadingsFor30Days(2, lukasPC);
+      insertReadingsFor30Days(3, lukasFridge);
 
-      // Sofia readings
-      insertReading(4, generateHourlyData(10, [0.08,0.05,0.04,0.04,0.05,0.08,0.10,0.12,0.15,0.20,0.18,0.15,0.08,0.04,0.02,0.01,0.01,0.01,0.01,0.02,0.03,0.05,0.06,0.07])); // TV
-      const sofiaStove = new Array(24).fill(0); sofiaStove[2]=0.20; sofiaStove[8]=0.25; sofiaStove[9]=0.20;
-      const sofiaOven = new Array(24).fill(0); sofiaOven[8]=0.50; sofiaOven[9]=0.40;
-      const sofiaNightlight = new Array(24).fill(0); for(let h=10;h<=13;h++){sofiaNightlight[h]=0.02;} for(let h=14;h<=19;h++){sofiaNightlight[h]=0.03;}
-      const sofiaAC = new Array(24).fill(0); sofiaAC[12]=0.20; sofiaAC[13]=0.20; for(let h=14;h<=19;h++){sofiaAC[h]=0.25;} sofiaAC[20]=0.15;
-      const sofiaWasher = new Array(24).fill(0); sofiaWasher[5]=0.50; sofiaWasher[6]=0.30;
+      // Sofia devices
+      insertReadingsFor30Days(4, sofiaTV);
+      insertReadingsFor30Days(5, sofiaStoveBase);
+      insertReadingsFor30Days(6, sofiaOvenBase);
+      insertReadingsFor30Days(7, sofiaNightlightBase);
+      insertReadingsFor30Days(8, sofiaACBase);
+      insertReadingsFor30Days(9, sofiaWasherBase);
 
-      insertReading(5, generateHourlyData(10, sofiaStove));
-      insertReading(6, generateHourlyData(10, sofiaOven));
-      insertReading(7, generateHourlyData(10, sofiaNightlight));
-      insertReading(8, generateHourlyData(10, sofiaAC));
-      insertReading(9, generateHourlyData(10, sofiaWasher));
-
-      console.log("Database seeded successfully!");
+      console.log("Database seeded successfully with 30 days of data!");
     });
 
   } catch (error) {
     console.error("Error seeding database:", error);
   } finally {
-    db.close();
+    setTimeout(() => {
+      db.close();
+    }, 2000); // Give time for all inserts to complete
   }
 }
 
