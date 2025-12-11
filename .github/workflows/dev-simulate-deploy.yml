@@ -41,14 +41,13 @@ jobs:
         with:
           node-version: 18
 
-
       - name: Install backend dependencies
         working-directory: backend
         run: npm install
 
       - name: Lint backend
         working-directory: backend
-        run: npm run lint
+        run: npx eslint .
 
       - name: Run backend tests
         working-directory: backend
@@ -62,14 +61,13 @@ jobs:
         with:
           node-version: 20
 
-
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install
+        run: npm install --legacy-peer-deps --force
 
       - name: Lint frontend
         working-directory: frontend
-        run: npm run lint
+        run: npx eslint .
 
       - name: Run frontend tests
         working-directory: frontend
@@ -88,15 +86,15 @@ jobs:
         run: docker build -t frontend-dev ./frontend
 
       # ---------------------
-      # Simulate dev deployment with Docker Compose
+      # Set up Docker Compose
       # ---------------------
-      - name: Install docker-compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
+      - name: Set up Docker and Compose
+        uses: docker/setup-docker@v4
+        with:
+          compose: true
 
       - name: Start dev environment
-        run: docker-compose -f docker-compose.ci.yml up -d
+        run: docker compose -f docker-compose.ci.yml up -d
 
       - name: Wait for services
         run: |
@@ -121,4 +119,4 @@ jobs:
       # ---------------------
       - name: Stop dev environment
         if: always()
-        run: docker-compose -f docker-compose.ci.yml down
+        run: docker compose -f docker-compose.ci.yml down
