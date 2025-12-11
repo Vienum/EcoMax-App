@@ -11,107 +11,52 @@ jobs:
     name: Simulate Dev Deployment
     runs-on: ubuntu-latest
 
-    services:
-      mysql:
-        image: mysql:8
-        env:
-          MYSQL_ROOT_PASSWORD: rootpass
-          MYSQL_DATABASE: energy
-          MYSQL_USER: appuser
-          MYSQL_PASSWORD: apppass
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h127.0.0.1 -u root -prootpass"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=10
-
     steps:
-      # ---------------------
-      # Checkout code
-      # ---------------------
       - uses: actions/checkout@v4
 
-      # ---------------------
       # Backend
-      # ---------------------
-      - name: Use Node 18
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 18
-
       - name: Install backend dependencies
         working-directory: backend
         run: npm install
-
-      - name: Lint backend (errors won’t fail job)
-        working-directory: backend
-        run: npx --no-install eslint . || true
-
       - name: Run backend tests
         working-directory: backend
         run: npm test
 
-      # ---------------------
       # Frontend
-      # ---------------------
-      - name: Use Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
-
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install --legacy-peer-deps --force
-
-      - name: Lint frontend (errors won’t fail job)
-        working-directory: frontend
-        run: npx --no-install eslint . || true
-
+        run: npm install
       - name: Run frontend tests
         working-directory: frontend
         run: npm test
 
-      # ---------------------
-      # Build Docker images
-      # ---------------------
+      # Build and start Docker Compose
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
       - name: Build backend Docker image
         run: docker build -t backend-dev ./backend
-
       - name: Build frontend Docker image
         run: docker build -t frontend-dev ./frontend
-
-      # ---------------------
-      # Start dev environment (Docker Compose)
-      # ---------------------
       - name: Start dev environment
-        run: docker compose -f docker-compose.ci.yml up -d
-
+        run: docker compose -f docker-compose.ci.yml up -d --build
       - name: Wait for services
-        run: |
-          echo "Waiting 15 seconds for services to start..."
-          sleep 15
-
+        run: sleep 15
       - name: Show running containers
         run: docker ps
 
-      # ---------------------
-      # Backend-Frontend Communication Test
-      # ---------------------
+      # Integration check
       - name: Integration check
         run: |
-          echo "Testing backend..."
           curl -f http://localhost:5000/health || exit 1
-          echo "Testing frontend..."
           curl -f http://localhost:3000 || exit 1
 
-      # ---------------------
       # Teardown
-      # ---------------------
       - name: Stop dev environment
         if: always()
         run: docker compose -f docker-compose.ci.yml down

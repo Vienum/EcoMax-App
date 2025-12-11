@@ -3,29 +3,19 @@ version: "3.9"
 services:
   db:
     image: mysql:8
-    container_name: ci_db
     environment:
+      MYSQL_ROOT_PASSWORD: rootpass
       MYSQL_DATABASE: energy
       MYSQL_USER: appuser
       MYSQL_PASSWORD: apppass
-      MYSQL_ROOT_PASSWORD: rootpass
-    ports:
-      - "3306:3306"
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-prootpass"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 10
 
   backend:
-    image: backend-dev   # Use image built in GitHub Actions
-    container_name: ci_backend
-    environment:
-      DB_HOST: db
-      DB_USER: appuser
-      DB_PASSWORD: apppass
-      DB_NAME: energy
-      DB_PORT: 3306
+    build: ./backend
     depends_on:
       db:
         condition: service_healthy
@@ -33,27 +23,9 @@ services:
       - "5000:5000"
 
   frontend:
-    image: frontend-dev  # Use image built in GitHub Actions
-    container_name: ci_frontend
-    command: npm run dev -- --host
+    build: ./frontend
     depends_on:
-      - backend
-    ports:
-      - "3000:3000"
-
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    container_name: ci_phpmyadmin
-    restart: always
-    environment:
-      PMA_HOST: db
-      PMA_USER: appuser
-      PMA_PASSWORD: apppass
-    depends_on:
-      db:
+      backend:
         condition: service_healthy
     ports:
-      - "8080:80"
-
-volumes:
-  db-data:
+      - "3000:3000"
