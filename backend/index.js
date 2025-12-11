@@ -9,7 +9,7 @@ app.use(express.json());
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'db',
   user: process.env.DB_USER || 'appuser',
-  password: process.env.DB_PASSWORD || 'apppass',
+  password: process.env.DB_PASSWORD || 'apppass', // fixed typo
   database: process.env.DB_NAME || 'energy',
   port: Number(process.env.DB_PORT || 3306),
   waitForConnections: true,
@@ -17,7 +17,6 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
-// Wait for MySQL to be ready
 async function waitForDb() {
   let tries = 0;
   while (tries < 30) {
@@ -34,13 +33,14 @@ async function waitForDb() {
   throw new Error('Unable to connect to DB after multiple attempts');
 }
 
-// --- HEALTHCHECK ENDPOINT ---
+// --- HEALTHCHECK ---
 app.get('/health', async (req, res) => {
   try {
-    await pool.query('SELECT 1'); // Check DB too
-    res.json({ status: 'ok' });
+    await pool.query('SELECT 1');
+    res.status(200).json({ status: 'ok' });
   } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
+    console.error('Healthcheck DB error:', err);
+    res.status(503).json({ status: 'error', message: 'DB unavailable' });
   }
 });
 
