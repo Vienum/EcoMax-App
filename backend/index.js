@@ -17,6 +17,7 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
+// Wait for MySQL to be ready
 async function waitForDb() {
   let tries = 0;
   while (tries < 30) {
@@ -33,13 +34,13 @@ async function waitForDb() {
   throw new Error('Unable to connect to DB after multiple attempts');
 }
 
-// --- HEALTHCHECK ---
+// --- HEALTHCHECK ENDPOINT ---
 app.get('/health', async (req, res) => {
   try {
-    await pool.query('SELECT 1');
-    res.status(200).json({ status: 'ok' });
+    await pool.query('SELECT 1'); // Check DB too
+    res.json({ status: 'ok' });
   } catch (err) {
-    res.status(500).json({ status: 'db error' });
+    res.status(500).json({ status: 'error', message: err.message });
   }
 });
 
