@@ -1,0 +1,120 @@
+name: Dev Deployment Simulation
+
+on:
+  push:
+    branches: [ "main", "docker-setup" ]
+  pull_request:
+    branches: [ "main", "docker-setup" ]
+
+jobs:
+  dev-sim:
+    name: Simulate Dev Deployment
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: energy
+          MYSQL_USER: appuser
+          MYSQL_PASSWORD: apppass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h127.0.0.1 -u root -prootpass"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      # ---------------------
+      # Checkout code
+      # ---------------------
+      - uses: actions/checkout@v4
+
+      # ---------------------
+      # Backend
+      # ---------------------
+      - name: Use Node 18
+        uses: actions/setup-node@v4
+        with: node-version: 18
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm install
+
+      - name: Lint backend
+        working-directory: backend
+        run: npm run lint
+
+      - name: Run backend tests
+        working-directory: backend
+        run: npm test
+
+      # ---------------------
+      # Frontend
+      # ---------------------
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with: node-version: 20
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+
+      # ---------------------
+      # Build Docker images
+      # ---------------------
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend Docker image
+        run: docker build -t backend-dev ./backend
+
+      - name: Build frontend Docker image
+        run: docker build -t frontend-dev ./frontend
+
+      # ---------------------
+      # Simulate dev deployment with Docker Compose
+      # ---------------------
+      - name: Install docker-compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+
+      - name: Start dev environment
+        run: docker-compose -f docker-compose.ci.yml up -d
+
+      - name: Wait for services
+        run: |
+          echo "Waiting 15 seconds for services to start..."
+          sleep 15
+
+      - name: Show running containers
+        run: docker ps
+
+      # ---------------------
+      # Backend-Frontend Communication Test
+      # ---------------------
+      - name: Integration check
+        run: |
+          echo "Testing backend..."
+          curl -f http://localhost:5000/health || exit 1
+          echo "Testing frontend..."
+          curl -f http://localhost:3000 || exit 1
+
+      # ---------------------
+      # Teardown
+      # ---------------------
+      - name: Stop dev environment
+        if: always()
+        run: docker-compose -f docker-compose.ci.yml down
