@@ -38,7 +38,9 @@ jobs:
       # ---------------------
       - name: Use Node 18
         uses: actions/setup-node@v4
-        with: node-version: 18
+        with:
+          node-version: 18
+
 
       - name: Install backend dependencies
         working-directory: backend
@@ -57,7 +59,9 @@ jobs:
       # ---------------------
       - name: Use Node 20
         uses: actions/setup-node@v4
-        with: node-version: 20
+        with:
+          node-version: 20
+
 
       - name: Install frontend dependencies
         working-directory: frontend
