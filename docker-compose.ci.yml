@@ -17,18 +17,18 @@ services:
       retries: 10
 
   backend:
-    build: ./backend
-    depends_on:
-      db:
-        condition: service_healthy
-    ports:
-      - "5000:5000"
-    healthcheck:
-      # Use a health endpoint if your backend has one, otherwise just test the port
-      test: ["CMD", "nc", "-z", "localhost", "5000"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+  build: ./backend
+  depends_on:
+    db:
+      condition: service_healthy
+  ports:
+    - "5000:5000"
+  healthcheck:
+    test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+    interval: 5s
+    timeout: 5s
+    retries: 10
+
 
   frontend:
     build: ./frontend

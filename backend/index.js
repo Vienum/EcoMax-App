@@ -1,4 +1,4 @@
-const express = require('express');
+const express = require('express'); 
 const cors = require('cors');
 const mysql = require('mysql2/promise');
 
@@ -32,6 +32,16 @@ async function waitForDb() {
   }
   throw new Error('Unable to connect to DB after multiple attempts');
 }
+
+// --- HEALTHCHECK ---
+app.get('/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.status(200).json({ status: 'ok' });
+  } catch (err) {
+    res.status(500).json({ status: 'db error' });
+  }
+});
 
 // --- PIE DATA ---
 app.get('/api/pieData', async (req, res) => {
