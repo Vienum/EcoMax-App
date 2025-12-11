@@ -231,7 +231,7 @@ const Dashboard = () => {
             <Progress
               percent={progressPercent}
               strokeColor={progressPercent > 100 ? '#cf1322' : '#3f8600'}
-              format={() => `${summaryData?.total_consumption.toFixed(0) || 0} / ${summaryData?.average_consumption || 0} kWh`}
+              format={() => `${summaryData?.total_consumption.toFixed(0) || 0} / ${summaryData?.average_consumption.toFixed(2) || 0} kWh`}
             />
             <div style={{ marginTop: 12, textAlign: 'center', fontSize: 14 }}>
               {isAboveAverage ? (
