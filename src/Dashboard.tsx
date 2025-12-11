@@ -1,4 +1,4 @@
-import { Card, Col, Row, Alert, Spin, Empty, Select, Statistic, Progress } from "antd";
+import { Card, Col, Row, Alert, Spin, Empty, Select, Statistic, Progress, Button } from "antd";
 import { useEffect, useState } from "react";
 import {
   ResponsiveContainer,
@@ -51,9 +51,35 @@ const Dashboard = () => {
           fetch("http://localhost:3001/api/gsi", { headers }).catch(() => null)
         ]);
 
+        let gsiJson: any = null;
+
+        // Parse GSI response once and store it
+        if (gsiRes && gsiRes.ok) {
+          gsiJson = await gsiRes.json();
+        }
+
         if (summaryRes.ok) {
           const summary = await summaryRes.json();
+          console.log(summary)
           setSummaryData(summary);
+
+          // If premium, calculate CO2 and green percentage
+          if (summary.premium === 1 && gsiJson) {
+            // Calculate average CO2 intensity from GSI data
+            if (gsiJson.forecast && Array.isArray(gsiJson.forecast)) {
+              const avgCO2 = gsiJson.forecast.reduce((sum: any, item: any) => sum + (item.co2_g_standard || 0), 0) / gsiJson.forecast.length;
+              const avgGSI = gsiJson.forecast.reduce((sum: any, item: any) => sum + (item.gsi || 0), 0) / gsiJson.forecast.length;
+
+              // Calculate total CO2 emissions (kWh * gCO2/kWh = gCO2, then convert to kg)
+              const totalCO2kg = (summary.total_consumption * avgCO2) / 1000;
+
+              setSummaryData({
+                ...summary,
+                total_co2_kg: totalCO2kg,
+                green_percentage: avgGSI
+              });
+            }
+          }
         }
 
         if (pieRes.ok) {
@@ -66,9 +92,9 @@ const Dashboard = () => {
           setHourlyData(hourly);
         }
 
-        // Fetch GSI data
-        if (gsiRes && gsiRes.ok) {
-          const gsiResult = await gsiRes.json();
+        // Use the already parsed GSI data
+        if (gsiJson) {
+          const gsiResult = gsiJson;
 
           if (gsiResult.forecast && Array.isArray(gsiResult.forecast)) {
             const transformedGsi = gsiResult.forecast.map((item: any) => ({
@@ -183,69 +209,137 @@ const Dashboard = () => {
       </div>
 
       <Row gutter={[16, 16]}>
-        {/* Summary Cards */}
-        <Col span={24} lg={8}>
-          <Card>
-            <Statistic
-              title="Your Total Consumption"
-              value={summaryData?.total_consumption.toFixed(2) || 0}
-              suffix="kWh"
-              prefix={<ThunderboltOutlined />}
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
-        </Col>
+        {/* Premium-only Summary Cards */}
+        {summaryData?.premium === 1 && (
+          <>
+            <Col span={24} lg={8}>
+              <Card>
+                <Statistic
+                  title="Your Total Consumption"
+                  value={summaryData?.total_consumption.toFixed(2) || 0}
+                  suffix="kWh"
+                  prefix={<ThunderboltOutlined />}
+                  valueStyle={{ color: '#1890ff' }}
+                />
+              </Card>
+            </Col>
 
-        <Col span={24} lg={8}>
-          <Card>
-            <Statistic
-              title={`${getTimeRangeLabel()} Household Average`}
-              value={summaryData?.average_consumption.toFixed(2) || 0}
-              suffix="kWh"
-              valueStyle={{ color: '#666' }}
-            />
-            <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
-              Based on {summaryData?.people_in_household || 0} {summaryData?.people_in_household === 1 ? 'person' : 'people'} × 1,500 kWh ÷ {getAverageDivisor()}
-            </div>
-          </Card>
-        </Col>
+            <Col span={24} lg={8}>
+              <Card>
+                <Statistic
+                  title={`${getTimeRangeLabel()} Household Average`}
+                  value={summaryData?.average_consumption.toFixed(2) || 0}
+                  suffix="kWh"
+                  valueStyle={{ color: '#666' }}
+                />
+                <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
+                  Based on {summaryData?.people_in_household || 0} {summaryData?.people_in_household === 1 ? 'person' : 'people'} × 1,500 kWh ÷ {getAverageDivisor()}
+                </div>
+              </Card>
+            </Col>
 
-        <Col span={24} lg={8}>
-          <Card>
-            <Statistic
-              title="Comparison to Average"
-              value={Math.abs(summaryData?.percentage_difference || 0)}
-              suffix="%"
-              prefix={isAboveAverage ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-              valueStyle={{ color: isAboveAverage ? '#cf1322' : '#3f8600' }}
-            />
-            <div style={{ marginTop: 8, fontSize: 12, color: isAboveAverage ? '#cf1322' : '#3f8600' }}>
-              {isAboveAverage ? 'Above' : 'Below'} average consumption
-            </div>
-          </Card>
-        </Col>
+            <Col span={24} lg={8}>
+              <Card>
+                <Statistic
+                  title="Comparison to Average"
+                  value={Math.abs(summaryData?.percentage_difference || 0)}
+                  suffix="%"
+                  prefix={isAboveAverage ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+                  valueStyle={{ color: isAboveAverage ? '#cf1322' : '#3f8600' }}
+                />
+                <div style={{ marginTop: 8, fontSize: 12, color: isAboveAverage ? '#cf1322' : '#3f8600' }}>
+                  {isAboveAverage ? 'Above' : 'Below'} average consumption
+                </div>
+              </Card>
+            </Col>
 
-        {/* Consumption Progress */}
-        <Col span={24}>
-          <Card title="Consumption vs. Average">
-            <Progress
-              percent={progressPercent}
-              strokeColor={progressPercent > 100 ? '#cf1322' : '#3f8600'}
-              format={() => `${summaryData?.total_consumption.toFixed(0) || 0} / ${summaryData?.average_consumption.toFixed(2) || 0} kWh`}
-            />
-            <div style={{ marginTop: 12, textAlign: 'center', fontSize: 14 }}>
-              {isAboveAverage ? (
-                <span style={{ color: '#cf1322' }}>
-                  💡 Tip: Try to reduce consumption during peak hours to save energy!
-                </span>
-              ) : (
-                <span style={{ color: '#3f8600' }}>
-                  ✅ Great job! You're consuming less energy than the average household!
-                </span>
-              )}
-            </div>
-          </Card>
-        </Col>
+            {/* Consumption Progress */}
+            <Col span={24}>
+              <Card title="Consumption vs. Average">
+                <Progress
+                  percent={progressPercent}
+                  strokeColor={progressPercent > 100 ? '#cf1322' : '#3f8600'}
+                  format={() => `${summaryData?.total_consumption.toFixed(0) || 0} / ${summaryData?.average_consumption.toFixed(0) || 0} kWh`}
+                />
+                <div style={{ marginTop: 12, textAlign: 'center', fontSize: 14 }}>
+                  {isAboveAverage ? (
+                    <span style={{ color: '#cf1322' }}>
+                      💡 Tip: Try to reduce consumption during peak hours to save energy!
+                    </span>
+                  ) : (
+                    <span style={{ color: '#3f8600' }}>
+                      ✅ Great job! You're consuming less energy than the average household!
+                    </span>
+                  )}
+                </div>
+              </Card>
+            </Col>
+
+            {/* Premium: CO2 Emissions */}
+            <Col span={24} lg={12}>
+              <Card>
+                <Statistic
+                  title="Total CO₂ Emissions"
+                  value={summaryData?.total_co2_kg?.toFixed(2) || 0}
+                  suffix="kg CO₂"
+                  valueStyle={{ color: '#ff7875' }}
+                />
+                <div style={{ marginTop: 12, fontSize: 12, color: '#666' }}>
+                  Based on your consumption and regional grid carbon intensity
+                </div>
+              </Card>
+            </Col>
+
+            {/* Premium: Green Energy Percentage */}
+            <Col span={24} lg={12}>
+              <Card>
+                <Statistic
+                  title="Green Energy Usage"
+                  value={summaryData?.green_percentage?.toFixed(1) || 0}
+                  suffix="%"
+                  valueStyle={{ color: '#52c41a' }}
+                />
+                <Progress
+                  percent={summaryData?.green_percentage || 0}
+                  strokeColor="#52c41a"
+                  showInfo={false}
+                  style={{ marginTop: 12 }}
+                />
+                <div style={{ marginTop: 12, fontSize: 12, color: '#666' }}>
+                  Percentage of your energy from renewable sources
+                </div>
+              </Card>
+            </Col>
+          </>
+        )}
+
+        {/* Free User: Upgrade Banner */}
+        {summaryData?.premium === 0 && (
+          <Col span={24}>
+            <Card
+              style={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                border: 'none'
+              }}
+            >
+              <div style={{ textAlign: 'center', padding: '20px', color: 'white' }}>
+                <h2 style={{ color: 'white', marginBottom: 16 }}>🌟 Upgrade to Premium</h2>
+                <p style={{ fontSize: 16, marginBottom: 20, color: 'rgba(255,255,255,0.9)' }}>
+                  Unlock advanced analytics including consumption tracking, average comparison,
+                  CO₂ emissions monitoring, and green energy insights!
+                </p>
+                <Button type="primary" size="large" style={{
+                  background: 'white',
+                  color: '#667eea',
+                  border: 'none',
+                  fontWeight: 'bold'
+                }}>
+                  Upgrade Now
+                </Button>
+              </div>
+            </Card>
+          </Col>
+        )}
 
         {/* Pie Chart - Room Breakdown */}
         <Col span={24} lg={12}>
@@ -336,58 +430,60 @@ const Dashboard = () => {
           </Card>
         </Col>
 
-        {/* GSI Chart */}
-        <Col span={24}>
-          <Card
-            title="Green Energy Index (Grünstromindex)"
-            extra={
-              <Select
-                value={gsiTimeRange}
-                onChange={setGsiTimeRange}
-                style={{ width: 160 }}
-                options={[
-                  { value: 'next12', label: 'Next 12 Hours' },
-                  { value: 'next24', label: 'Next 24 Hours' },
-                  { value: 'next36', label: 'Next 36 Hours' },
-                  { value: 'all', label: 'All Available' },
-                ]}
-              />
-            }
-          >
-            {filteredGsiData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={filteredGsiData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="time"
-                    tick={{ fontSize: 10 }}
-                    interval={filteredGsiData.length > 24 ? 3 : 2}
-                  />
-                  <YAxis
-                    label={{ value: 'Green Energy Index', angle: -90, position: 'insideLeft' }}
-                  />
-                  <Tooltip
-                    formatter={(value: any, name: string) => {
-                      if (name === 'gsi') return [`${value}%`, 'Green Index'];
-                      if (name === 'co2') return [`${value} g/kWh`, 'CO₂ Intensity'];
-                      return value;
-                    }}
-                  />
-                  <Legend />
-                  <Bar dataKey="gsi" fill="#52c41a" name="Green Energy %" />
-                  <Bar dataKey="co2" fill="#ff7875" name="CO₂ g/kWh" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <Alert
-                message="Green Energy Data"
-                description="Green energy forecast data based on your ZIP code will be displayed here once available."
-                type="info"
-                showIcon
-              />
-            )}
-          </Card>
-        </Col>
+        {/* GSI Chart - Premium Only */}
+        {summaryData?.premium === 1 && (
+          <Col span={24}>
+            <Card
+              title="Green Energy Index (Grünstromindex)"
+              extra={
+                <Select
+                  value={gsiTimeRange}
+                  onChange={setGsiTimeRange}
+                  style={{ width: 160 }}
+                  options={[
+                    { value: 'next12', label: 'Next 12 Hours' },
+                    { value: 'next24', label: 'Next 24 Hours' },
+                    { value: 'next36', label: 'Next 36 Hours' },
+                    { value: 'all', label: 'All Available' },
+                  ]}
+                />
+              }
+            >
+              {filteredGsiData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={filteredGsiData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fontSize: 10 }}
+                      interval={filteredGsiData.length > 24 ? 3 : 2}
+                    />
+                    <YAxis
+                      label={{ value: 'Green Energy Index', angle: -90, position: 'insideLeft' }}
+                    />
+                    <Tooltip
+                      formatter={(value: any, name: string) => {
+                        if (name === 'gsi') return [`${value}%`, 'Green Index'];
+                        if (name === 'co2') return [`${value} g/kWh`, 'CO₂ Intensity'];
+                        return value;
+                      }}
+                    />
+                    <Legend />
+                    <Bar dataKey="gsi" fill="#52c41a" name="Green Energy %" />
+                    <Bar dataKey="co2" fill="#ff7875" name="CO₂ g/kWh" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <Alert
+                  message="Green Energy Data"
+                  description="Green energy forecast data based on your ZIP code will be displayed here once available."
+                  type="info"
+                  showIcon
+                />
+              )}
+            </Card>
+          </Col>
+        )}
       </Row>
     </div>
   );
