@@ -10,104 +10,9 @@ app.use(express.json());
 
 const db = new sqlite3.Database("./data.db");
 
-// ==========================================
-// Database Initialization - Run this once!
-// ==========================================
-db.serialize(() => {
-  // Drop old tables if starting fresh
-  // db.run(`DROP TABLE IF EXISTS users`);
-  
-  // Create users table with all registration fields
-  db.run(`
-    CREATE TABLE IF NOT EXISTS users (
-      user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password TEXT NOT NULL,
-      full_name TEXT NOT NULL,
-      birthday TEXT NOT NULL,
-      country TEXT NOT NULL,
-      city TEXT NOT NULL,
-      street TEXT NOT NULL,
-      house_number TEXT NOT NULL,
-      zip_code TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Update existing tables to use user_id instead of hardcoded values
-  // You'll need to update these tables based on your actual schema
-  db.run(`
-    CREATE TABLE IF NOT EXISTS pie_data (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      room TEXT NOT NULL,
-      value REAL NOT NULL,
-      date DATE DEFAULT (DATE('now')),
-      FOREIGN KEY (user_id) REFERENCES users(user_id)
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS hourly_totals (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      time TEXT NOT NULL,
-      value REAL NOT NULL,
-      date DATE DEFAULT (DATE('now')),
-      FOREIGN KEY (user_id) REFERENCES users(user_id)
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS kitchen_hourly (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      time TEXT NOT NULL,
-      value REAL NOT NULL,
-      date DATE DEFAULT (DATE('now')),
-      FOREIGN KEY (user_id) REFERENCES users(user_id)
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS livingroom_hourly (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      time TEXT NOT NULL,
-      value REAL NOT NULL,
-      date DATE DEFAULT (DATE('now')),
-      FOREIGN KEY (user_id) REFERENCES users(user_id)
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS bedroom_hourly (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      time TEXT NOT NULL,
-      value REAL NOT NULL,
-      date DATE DEFAULT (DATE('now')),
-      FOREIGN KEY (user_id) REFERENCES users(user_id)
-    )
-  `);
-
-  // Optional: Table for IoT devices that users will register later
-  db.run(`
-    CREATE TABLE IF NOT EXISTS devices (
-      device_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      device_name TEXT NOT NULL,
-      room TEXT NOT NULL,
-      device_type TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(user_id)
-    )
-  `);
-});
 
 // ==========================================
-// Registration Endpoint
+// REGISTRATION ENDPOINT
 // ==========================================
 app.post("/register", async (req, res) => {
   const {
@@ -121,26 +26,24 @@ app.post("/register", async (req, res) => {
     street,
     houseNumber,
     zipCode,
+    peopleInHousehold
   } = req.body;
 
-  // Validate required fields
-  if (!userName || !email || !password || !fullName || !birthday || 
-      !country || !city || !street || !houseNumber || !zipCode) {
-    return res.status(400).json({ 
-      error: "All fields are required" 
-    });
+  if (
+    !userName || !email || !password || !fullName || !birthday ||
+    !country || !city || !street || !houseNumber || !zipCode || !peopleInHousehold
+  ) {
+    return res.status(400).json({ error: "All fields are required" });
   }
 
   try {
-    // Hash password
     const hashed = await bcrypt.hash(password, 10);
 
-    // Insert user into database
     db.run(
       `INSERT INTO users (
         username, email, password, full_name, birthday,
-        country, city, street, house_number, zip_code
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        country, city, street, house_number, zip_code, people_in_household
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userName,
         email,
@@ -152,36 +55,130 @@ app.post("/register", async (req, res) => {
         street,
         houseNumber,
         zipCode,
+        peopleInHousehold
       ],
       function (err) {
         if (err) {
-          // Check for unique constraint violations
-          if (err.message.includes("UNIQUE constraint failed: users.username")) {
+          if (err.message.includes("username")) {
             return res.status(400).json({ error: "Username already exists" });
           }
-          if (err.message.includes("UNIQUE constraint failed: users.email")) {
+          if (err.message.includes("email")) {
             return res.status(400).json({ error: "Email already exists" });
           }
-          console.error("Registration error:", err);
           return res.status(500).json({ error: "Registration failed" });
         }
 
-        // Successfully registered - return user_id and token
         const user_id = this.lastID;
         const token = jwt.sign({ id: user_id, username: userName }, "geheimeskey");
-        
+
         res.status(201).json({
           message: "Successfully registered",
-          user_id: user_id,
-          token: token,
+          user_id,
+          token
         });
       }
     );
   } catch (error) {
-    console.error("Registration error:", error);
-    res.status(500).json({ error: "Server error during registration" });
+    res.status(500).json({ error: "Server error" });
   }
 });
+
+// ==========================================
+// AUTH
+// ==========================================
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader?.split(" ")[1];
+
+  if (!token) return res.status(401).json({ error: "No token provided" });
+
+  jwt.verify(token, "geheimeskey", (err, user) => {
+    if (err) return res.status(403).json({ error: "Invalid token" });
+    req.user_id = user.id;
+    next();
+  });
+};
+
+// ==========================================
+// CREATE ROOM (Frontend Form Will Call This)
+// ==========================================
+app.post("/api/rooms", authenticateToken, (req, res) => {
+  console.log(req.body)
+  const roomName = req.body.room_name;
+
+  if (!roomName) {
+    return res.status(400).json({ error: "roomName is required" });
+  }
+
+  db.run(
+    `INSERT INTO rooms (user_id, room_name) VALUES (?, ?)`,
+    [req.user_id, roomName],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+
+      res.status(201).json({
+        message: "Room created",
+        room_id: this.lastID,
+        roomName
+      });
+    }
+  );
+});
+
+// Get device readings for the last 24 hours
+app.get("/api/device/:device_id/readings", authenticateToken, (req, res) => {
+  const { device_id } = req.params;
+  const userId = req.user_id;
+
+  // Verify the device belongs to the user
+  db.get(
+    `SELECT * FROM devices WHERE device_id = ? AND user_id = ?`,
+    [device_id, userId],
+    (err, device) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!device) return res.status(404).json({ error: "Device not found" });
+
+      // Fetch last 24 hours of readings
+      db.all(
+        `SELECT timestamp, kwh FROM device_readings
+         WHERE device_id = ?
+         AND timestamp >= datetime('now', '-24 hours')
+         ORDER BY timestamp ASC`,
+        [device_id],
+        (err, readings) => {
+          if (err) return res.status(500).json({ error: err.message });
+
+          // Optional: fill missing hours with 0 if needed
+          res.json(readings);
+        }
+      );
+    }
+  );
+});
+
+
+
+// get room
+app.get("/api/rooms", authenticateToken, (req, res) => {
+  const userId = req.user_id;
+
+  db.all(`SELECT * FROM rooms WHERE user_id = ?`, [userId], (err, rooms) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    // Get devices for each room
+    const roomPromises = rooms.map(room => new Promise((resolve, reject) => {
+      db.all(`SELECT * FROM devices WHERE room_id = ?`, [room.room_id], (err, devices) => {
+        if (err) reject(err);
+        else resolve({ ...room, devices });
+      });
+    }));
+
+    Promise.all(roomPromises)
+      .then(results => res.json(results))
+      .catch(error => res.status(500).json({ error: error.message }));
+  });
+});
+
 
 // ==========================================
 // Login Endpoint (Updated)
@@ -200,7 +197,7 @@ app.post("/login", async (req, res) => {
       }
       if (!user) {
         console.log("User not found");
-        return res.status(400).json({ error: "User not found" });
+        return res.status(400).json({ error: "User or Password incorrect" });
       }
 
       console.log("Password from frontend:", password);
@@ -210,7 +207,7 @@ app.post("/login", async (req, res) => {
       console.log("bcrypt.compare result:", match);
 
       if (!match) {
-        return res.status(400).json({ error: "Wrong password" });
+        return res.status(400).json({ error: "User or Password incorrect" });
       }
 
       const token = jwt.sign(
@@ -226,82 +223,13 @@ app.post("/login", async (req, res) => {
   );
 });
 
-// ==========================================
-// Middleware to verify JWT and extract user_id
-// ==========================================
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
-
-  if (!token) {
-    return res.status(401).json({ error: "No token provided" });
-  }
-
-  jwt.verify(token, "geheimeskey", (err, user) => {
-    if (err) {
-      return res.status(403).json({ error: "Invalid token" });
-    }
-    req.user_id = user.id;
-    next();
-  });
-};
 
 // ==========================================
-// Dashboard Endpoints (Updated with auth)
+// GET ROOMS
 // ==========================================
-
-// Pie Chart: daily totals
-app.get("/api/pie", authenticateToken, (req, res) => {
+app.get("/api/rooms", authenticateToken, (req, res) => {
   db.all(
-    `SELECT room as name, value FROM pie_data WHERE user_id = ?`,
-    [req.user_id],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json(rows);
-    }
-  );
-});
-
-// Hourly totals
-app.get("/api/hourlyTotals", authenticateToken, (req, res) => {
-  db.all(
-    `SELECT time, value FROM hourly_totals WHERE user_id = ? ORDER BY time ASC`,
-    [req.user_id],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json(rows);
-    }
-  );
-});
-
-// Kitchen hourly
-app.get("/api/kitchen", authenticateToken, (req, res) => {
-  db.all(
-    `SELECT time, value as kitchen FROM kitchen_hourly WHERE user_id = ? ORDER BY time ASC`,
-    [req.user_id],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json(rows);
-    }
-  );
-});
-
-// Livingroom hourly
-app.get("/api/living", authenticateToken, (req, res) => {
-  db.all(
-    `SELECT time, value as living FROM livingroom_hourly WHERE user_id = ? ORDER BY time ASC`,
-    [req.user_id],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json(rows);
-    }
-  );
-});
-
-// Bedroom hourly
-app.get("/api/bedroom", authenticateToken, (req, res) => {
-  db.all(
-    `SELECT time, value as bedroom FROM bedroom_hourly WHERE user_id = ? ORDER BY time ASC`,
+    `SELECT room_id, room_name, created_at FROM rooms WHERE user_id = ?`,
     [req.user_id],
     (err, rows) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -311,58 +239,8 @@ app.get("/api/bedroom", authenticateToken, (req, res) => {
 });
 
 // ==========================================
-// Optional: Get user profile info
+// START SERVER
 // ==========================================
-app.get("/api/user/profile", authenticateToken, (req, res) => {
-  db.get(
-    `SELECT user_id, username, email, full_name, birthday, 
-            country, city, street, house_number, zip_code, created_at
-     FROM users WHERE user_id = ?`,
-    [req.user_id],
-    (err, user) => {
-      if (err) return res.status(500).json({ error: err.message });
-      if (!user) return res.status(404).json({ error: "User not found" });
-      res.json(user);
-    }
-  );
-});
-
-// ==========================================
-// Get Grünstromindex data for user's ZIP code
-// ==========================================
-app.get("/api/gsi", authenticateToken, async (req, res) => {
-  try {
-    // Get user's ZIP code from database
-    db.get(
-      `SELECT zip_code FROM users WHERE user_id = ?`,
-      [req.user_id],
-      async (err, user) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (!user || !user.zip_code) {
-          return res.status(404).json({ error: "User ZIP code not found" });
-        }
-
-        // Fetch GSI data from Corrently API
-        const gsiUrl = `https://api.corrently.io/v2.0/gsi/prediction?zip=${user.zip_code}`;
-        
-        try {
-          const fetch = (await import('node-fetch')).default;
-          const response = await fetch(gsiUrl);
-          const data = await response.json();
-          
-          res.json(data);
-        } catch (fetchError) {
-          console.error("Error fetching GSI data:", fetchError);
-          res.status(500).json({ error: "Failed to fetch green energy data" });
-        }
-      }
-    );
-  } catch (error) {
-    console.error("Error in GSI endpoint:", error);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
 app.listen(3001, () => console.log("Server running on port 3001"));
 
 module.exports = app;

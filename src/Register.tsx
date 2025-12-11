@@ -1,13 +1,12 @@
 import { useState } from "react";
-import { Form, Input, Button, Card, Typography, Steps, message, Modal, DatePicker, Select, Row, Col } from "antd";
-import { UserOutlined, HomeOutlined, InfoCircleOutlined } from "@ant-design/icons";
+import { Form, Input, Button, Card, Typography, Steps, message, DatePicker, Select, Row, Col } from "antd";
+import { UserOutlined, HomeOutlined } from "@ant-design/icons";
 
 const { Text } = Typography;
 
 const Register = ({ switchToLogin, setLoggedIn }: any) => {
     const [currentStep, setCurrentStep] = useState(0);
     const [form] = Form.useForm();
-    const [showOptionalModal, setShowOptionalModal] = useState(false);
     const [countries] = useState([
         "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Argentina", "Armenia", "Australia",
         "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium",
@@ -38,18 +37,8 @@ const Register = ({ switchToLogin, setLoggedIn }: any) => {
     ]);
 
     const steps = [
-        {
-            title: "Account",
-            icon: <UserOutlined />,
-        },
-        {
-            title: "Address",
-            icon: <HomeOutlined />,
-        },
-        {
-            title: "Additional",
-            icon: <InfoCircleOutlined />,
-        },
+        { title: "Account", icon: <UserOutlined /> },
+        { title: "Address", icon: <HomeOutlined /> },
     ];
 
     const nextStep = async () => {
@@ -67,9 +56,8 @@ const Register = ({ switchToLogin, setLoggedIn }: any) => {
                     "street",
                     "houseNumber",
                     "zipCode",
+                    "peopleInHousehold",
                 ]);
-                // Show optional info modal before moving to step 3
-                setShowOptionalModal(true);
             }
         } catch (error) {
             message.error("Please fill in all required fields correctly");
@@ -80,24 +68,16 @@ const Register = ({ switchToLogin, setLoggedIn }: any) => {
         setCurrentStep(currentStep - 1);
     };
 
-    const handleOptionalModalOk = () => {
-        setShowOptionalModal(false);
-        setCurrentStep(2);
-    };
-
-    const handleOptionalModalSkip = () => {
-        setShowOptionalModal(false);
-        handleSubmit();
-    };
-
     const handleSubmit = async () => {
         try {
             // Validate ALL fields, not just current step
             const values = await form.validateFields([
                 "userName", "email", "password", "confirmPassword",
                 "fullName", "birthday", "country", "city",
-                "street", "houseNumber", "zipCode"
+                "street", "houseNumber", "zipCode",
+                "peopleInHousehold"
             ]);
+
             console.log("Registration data:", values);
 
             // Format the data for your backend
@@ -211,14 +191,26 @@ const Register = ({ switchToLogin, setLoggedIn }: any) => {
             case 1:
                 return (
                     <>
-                        <Form.Item
-                            name="fullName"
-                            label="Full Name"
-                            rules={[{ required: true, message: "Please enter your full name" }]}
-                        >
-                            <Input placeholder="Enter full name" />
-                        </Form.Item>
-
+                        <Row gutter={16}>
+                            <Col span={16}>
+                                <Form.Item
+                                    name="fullName"
+                                    label="Full Name"
+                                    rules={[{ required: true, message: "Please enter your full name" }]}
+                                >
+                                    <Input placeholder="Enter full name" />
+                                </Form.Item>
+                            </Col>
+                            <Col span={6}>
+                                <Form.Item
+                                    name="peopleInHousehold"
+                                    label="People in Household"
+                                    rules={[{ required: true, message: "Please enter number of household members" }]}
+                                >
+                                    <Input type="number" min={1} placeholder="e.g. 3" />
+                                </Form.Item>
+                            </Col>
+                        </Row>
                         <Form.Item
                             name="birthday"
                             label="Birthday"
@@ -287,6 +279,7 @@ const Register = ({ switchToLogin, setLoggedIn }: any) => {
                                 </Form.Item>
                             </Col>
                         </Row>
+
                     </>
                 );
 
@@ -343,21 +336,6 @@ const Register = ({ switchToLogin, setLoggedIn }: any) => {
                     </div>
                 </Form>
             </Card>
-
-            <Modal
-                title="Additional Information"
-                open={showOptionalModal}
-                onOk={handleOptionalModalOk}
-                onCancel={handleOptionalModalSkip}
-                okText="Continue"
-                cancelText="Skip & Complete Registration"
-            >
-                <p>
-                    Providing further information may be beneficial for getting more accurate energy
-                    consumption data and personalized recommendations.
-                </p>
-                <p>Would you like to provide additional details?</p>
-            </Modal>
         </div>
     );
 };
