@@ -86,13 +86,8 @@ jobs:
         run: docker build -t frontend-dev ./frontend
 
       # ---------------------
-      # Set up Docker Compose
+      # Start dev environment (Docker Compose)
       # ---------------------
-      - name: Set up Docker and Compose
-        uses: docker/setup-docker@v4
-        with:
-          compose: true
-
       - name: Start dev environment
         run: docker compose -f docker-compose.ci.yml up -d
 
