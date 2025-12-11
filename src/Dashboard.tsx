@@ -1,211 +1,327 @@
-import { Card, Col, Row, Select, Tooltip } from "antd";
-import React, { useEffect, useState } from "react";
-import { ResponsiveContainer, PieChart, Pie, Cell, Legend, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
-
-export const calculateMergedHourly = (
-  hourlyTotals: { time: string; value: number }[],
-  kitchenHourly: { kitchen: number }[],
-  livingHourly: { living: number }[],
-  bedroomHourly: { bedroom: number }[]
-) => {
-  return hourlyTotals.map((t, i) => ({
-    ...t,
-    kitchen: kitchenHourly[i]?.kitchen ?? 0,
-    living: livingHourly[i]?.living ?? 0,
-    bedroom: bedroomHourly[i]?.bedroom ?? 0,
-  }));
-};
-
-module.exports = { calculateMergedHourly };
-
-
-
+import { Card, Col, Row, Alert, Spin, Empty, Select } from "antd";
+import { useEffect, useState } from "react";
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  Tooltip,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid
+} from "recharts";
 
 const Dashboard = () => {
-
-  const [roomSelection, setRoomSelection] = React.useState('kitchen')
-
-
   const [pieData, setPieData] = useState([]);
-  const [hourlyTotals, setHourlyTotals] = useState([]);
-  const [kitchenHourly, setKitchenHourly] = useState([]);
-  const [livingHourly, setLivingHourly] = useState([]);
-  const [bedroomHourly, setBedroomHourly] = useState([]);
+  const [gsiData, setGsiData] = useState([]);
+  const [gsiTimeRange, setGsiTimeRange] = useState('next24');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<any>(null);
 
   useEffect(() => {
-    fetch("http://localhost:3001/api/pie").then(r => r.json()).then(setPieData);
-    fetch("http://localhost:3001/api/hourlyTotals").then(r => r.json()).then(setHourlyTotals);
-    fetch("http://localhost:3001/api/kitchen").then(r => r.json()).then(setKitchenHourly);
-    fetch("http://localhost:3001/api/living").then(r => r.json()).then(setLivingHourly);
-    fetch("http://localhost:3001/api/bedroom").then(r => r.json()).then(setBedroomHourly);
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const token = localStorage.getItem('token');
+
+        if (!token) {
+          setError("No authentication token found");
+          setLoading(false);
+          return;
+        }
+
+        const headers = {
+          'Authorization': `Bearer ${token}`
+        };
+
+        // Fetch pie chart data
+        const pieResponse = await fetch("http://localhost:3001/api/pie", { headers });
+
+        if (!pieResponse.ok) {
+          throw new Error("Failed to fetch energy data");
+        }
+
+        const pieDataResult = await pieResponse.json();
+
+        // Check if we got data
+        if (pieDataResult && pieDataResult.length > 0) {
+          setPieData(pieDataResult);
+        } else {
+          setPieData([]);
+        }
+
+        // Fetch GSI (Grünstromindex) data
+        try {
+          const gsiResponse = await fetch("http://localhost:3001/api/gsi", { headers });
+
+          if (gsiResponse.ok) {
+            const gsiResult = await gsiResponse.json();
+
+            // Store the full forecast data
+            if (gsiResult.forecast && Array.isArray(gsiResult.forecast)) {
+              const transformedGsi = gsiResult.forecast.map((item: any) => ({
+                time: new Date(item.timeStamp).toLocaleTimeString('de-DE', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                }),
+                fullDate: new Date(item.timeStamp),
+                gsi: item.gsi,
+                co2: item.co2_g_standard
+              }));
+              setGsiData(transformedGsi);
+            }
+          }
+        } catch (gsiError) {
+          console.log("GSI data not available:", gsiError);
+          // Don't fail the whole dashboard if GSI fails
+        }
+
+        setLoading(false);
+      } catch (err: any) {
+        console.error("Error fetching dashboard data:", err);
+        setError(err.message);
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
 
-  const mergedHourly = calculateMergedHourly(hourlyTotals, kitchenHourly, livingHourly, bedroomHourly);
+  const COLORS = ["#8884d8", "#82ca9d", "#ffc658", "#ff7f7f", "#a28bd4", "#ff6b9d"];
 
+  // Filter GSI data based on selected time range
+  const getFilteredGsiData = () => {
+    if (gsiData.length === 0) return [];
 
-  const COLORS = ["#8884d8", "#82ca9d", "#ffc658", "#ff7f7f"];
+    const now = new Date();
+
+    switch (gsiTimeRange) {
+      case 'next12':
+        return gsiData.filter((item: any) => item.fullDate >= now).slice(0, 12);
+      case 'next24':
+        return gsiData.filter((item: any) => item.fullDate >= now).slice(0, 24);
+      case 'next36':
+        return gsiData.filter((item: any) => item.fullDate >= now);
+      case 'all':
+        return gsiData;
+      default:
+        return gsiData.filter((item: any) => item.fullDate >= now).slice(0, 24);
+    }
+  };
+
+  const filteredGsiData = getFilteredGsiData();
+
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '60vh'
+      }}>
+        <Spin size="large" tip="Loading energy data..." />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Alert
+        message="Error Loading Dashboard"
+        description={error}
+        type="error"
+        showIcon
+      />
+    );
+  }
 
   return (
-    <Row style={{ height: "100vh" }} gutter={[16, 16]}>
-      <Col span={12}>
-        <Card
-          title="Total Consumption"
-          styles={{
-            body: {
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              backgroundColor: 'black',
-              height: "92.5%",
+    <div>
+      <h2 style={{ marginBottom: 24 }}>Energy Consumption Dashboard</h2>
+
+      <Row gutter={[16, 16]}>
+        <Col span={24} lg={12}>
+          <Card
+            title="Total Energy Consumption by Room"
+            styles={{
+              body: {
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                minHeight: "400px",
+              }
+            }}
+          >
+            {pieData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={400}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={120}
+                    innerRadius={60}
+                    label={({ name, value }) => `${name}: ${value} kWh`}
+                    labelLine={false}
+                  >
+                    {pieData.map((entry, idx) => (
+                      <Cell key={`cell-${idx}`} fill={COLORS[idx % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: any) => `${value} kWh`}
+                  />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <Empty
+                description="No energy consumption data available yet"
+                style={{ marginTop: 60 }}
+              />
+            )}
+          </Card>
+        </Col>
+
+        <Col span={24} lg={12}>
+          <Card
+            title="Energy Insights"
+            styles={{
+              body: {
+                minHeight: "400px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center"
+              }
+            }}
+          >
+            {pieData.length > 0 ? (
+              <div>
+                <h3>Consumption Summary</h3>
+                <div style={{ marginTop: 20 }}>
+                  {pieData.map((room: any, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: '12px',
+                        marginBottom: '8px',
+                        backgroundColor: '#f5f5f5',
+                        borderRadius: '6px',
+                        borderLeft: `4px solid ${COLORS[idx % COLORS.length]}`
+                      }}
+                    >
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <span style={{ fontWeight: 500 }}>{room.name}</span>
+                        <span style={{ fontSize: '18px', fontWeight: 'bold' }}>
+                          {room.value} kWh
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{
+                    marginTop: 20,
+                    padding: '16px',
+                    backgroundColor: '#e6f7ff',
+                    borderRadius: '6px',
+                    borderLeft: '4px solid #1890ff'
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <span style={{ fontWeight: 600, fontSize: '16px' }}>Total Consumption</span>
+                      <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#1890ff' }}>
+                        {pieData.reduce((sum, room: any) => sum + room.value, 0).toFixed(2)} kWh
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <Empty
+                description="Start tracking your energy consumption by adding devices in Room View"
+              />
+            )}
+          </Card>
+        </Col>
+
+        <Col span={24}>
+          <Card
+            title="Green Energy Index (Grünstromindex)"
+            extra={
+              <Select
+                value={gsiTimeRange}
+                onChange={setGsiTimeRange}
+                style={{ width: 160 }}
+                options={[
+                  { value: 'next12', label: 'Next 12 Hours' },
+                  { value: 'next24', label: 'Next 24 Hours' },
+                  { value: 'next36', label: 'Next 36 Hours' },
+                  { value: 'all', label: 'All Available' },
+                ]}
+              />
             }
-          }}
-          style={{ backgroundColor: "grey", height: "100%" }}
-        >
-          <ResponsiveContainer width="100%" height="90%">
-            <PieChart>
-              <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="45%" outerRadius={160} innerRadius={80} label>
-                {pieData.map((entry, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
-              </Pie>
-              <Tooltip formatter={(v: any) => `${v} kWh`} contentStyle={{ backgroundColor: "#0b0b0b" }} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#fff" }} />
-              <Legend formatter={(v) => <span style={{ color: "#fff" }}>{v}</span>} verticalAlign="bottom" />
-            </PieChart>
-          </ResponsiveContainer>
-        </Card>
-      </Col>
+          >
+            {filteredGsiData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={filteredGsiData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="time"
+                    tick={{ fontSize: 10 }}
+                    interval={filteredGsiData.length > 24 ? 3 : 2}
+                  />
+                  <YAxis
+                    label={{ value: 'Green Energy Index', angle: -90, position: 'insideLeft' }}
+                  />
+                  <Tooltip
+                    formatter={(value: any, name: string) => {
+                      if (name === 'gsi') return [`${value}%`, 'Green Index'];
+                      if (name === 'co2') return [`${value} g/kWh`, 'CO₂ Intensity'];
+                      return value;
+                    }}
+                  />
+                  <Legend />
+                  <Bar dataKey="gsi" fill="#52c41a" name="Green Energy %" />
+                  <Bar dataKey="co2" fill="#ff7875" name="CO₂ g/kWh" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <Alert
+                message="Green Energy Data"
+                description="Green energy forecast data based on your ZIP code will be displayed here once available."
+                type="info"
+                showIcon
+              />
+            )}
+          </Card>
+        </Col>
 
-      <Col span={12} style={{ height: "100%" }}>
-        <Row style={{ height: "50%" }} gutter={[0, 16]}>
-          <Col span={24}>
-            <Card
-              title="Room View"
-              extra={<Select style={{ width: "120px" }} onChange={(val) => setRoomSelection(val)} defaultValue="kitchen" options={[{ value: "kitchen", label: "Kitchen" }, { value: "living", label: "Livingroom" }, { value: "bedroom", label: "Bedroom" }]} />}
-              styles={{
-                body: {
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  height: "85%",
-                  backgroundColor: 'black'
-                },
-                header: { paddingLeft: "125px" }
-
-              }}
-              style={{ backgroundColor: "grey", height: "100%" }}
-            >
-              {/* Graph 2 card content — paste inside Graph 2 <Card> ... </Card> */}
-              <div
-                style={{
-                  display: "flex",
-                  width: "100%",
-                  gap: 12,
-                  alignItems: "stretch",
-                  height: "100%",      // <- ensure the row/card gives a height to this container
-                }}
-              >
-                {roomSelection === "kitchen" ?
-                  <div style={{ flex: 1, minWidth: 120, height: "100%" }}>
-                    <div style={{ fontSize: 12, marginBottom: 6, textAlign: "center", color: "#fff" }}>
-                      Kitchen
-                    </div>
-                    <ResponsiveContainer width="100%" height="90%">
-                      <LineChart data={kitchenHourly}>
-                        <CartesianGrid stroke="rgba(255,255,255,0.10)" />
-                        <XAxis dataKey="time" stroke="#fff" tick={{ fill: "#fff", fontSize: 10 }} />
-                        <YAxis stroke="#fff" tick={{ fill: "#fff", fontSize: 10 }} />
-                        <Tooltip formatter={(v: any) => `${v} kWh`} contentStyle={{ backgroundColor: "#0b0b0b" }} itemStyle={{ color: "#fff" }} />
-                        <Line type="monotone" dataKey="kitchen" stroke={COLORS[0]} strokeWidth={2} dot={{ r: 2 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                  : null}
-                {roomSelection === "living" ?
-                  <div style={{ flex: 1, minWidth: 120, height: "100%" }}>
-                    <div style={{ fontSize: 12, marginBottom: 6, textAlign: "center", color: "#fff" }}>
-                      Living Room
-                    </div>
-                    <ResponsiveContainer width="100%" height="90%">
-                      <LineChart data={livingHourly}>
-                        <CartesianGrid stroke="rgba(255,255,255,0.10)" />
-                        <XAxis dataKey="time" stroke="#fff" tick={{ fill: "#fff", fontSize: 10 }} />
-                        <YAxis stroke="#fff" tick={{ fill: "#fff", fontSize: 10 }} />
-                        <Tooltip formatter={(v: any) => `${v} kWh`} contentStyle={{ backgroundColor: "#0b0b0b" }} itemStyle={{ color: "#fff" }} />
-                        <Line type="monotone" dataKey="living" stroke={COLORS[1]} strokeWidth={2} dot={{ r: 2 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                  : null}
-                {roomSelection === "bedroom" ?
-                  <div style={{ flex: 1, minWidth: 120, height: "100%" }}>
-                    <div style={{ fontSize: 12, marginBottom: 6, textAlign: "center", color: "#fff" }}>
-                      Bedroom
-                    </div>
-                    <ResponsiveContainer width="100%" height="90%">
-                      <LineChart data={bedroomHourly}>
-                        <CartesianGrid stroke="rgba(255,255,255,0.10)" />
-                        <XAxis dataKey="time" stroke="#fff" tick={{ fill: "#fff", fontSize: 10 }} />
-                        <YAxis stroke="#fff" tick={{ fill: "#fff", fontSize: 10 }} />
-                        <Tooltip formatter={(v: any) => `${v} kWh`} contentStyle={{ backgroundColor: "#0b0b0b" }} itemStyle={{ color: "#fff" }} />
-                        <Line type="monotone" dataKey="bedroom" stroke={COLORS[2]} strokeWidth={2} dot={{ r: 2 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                  : null}
-              </div>
-
-            </Card>
-          </Col>
-        </Row>
-
-        <Row style={{ height: "50%" }}>
-          <Col span={24}>
-            <Card
-              title="Hourly Consumption"
-              styles={{
-                body: {
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  backgroundColor: 'black',
-                  height: "85%",
-                },
-              }}
-              style={{ backgroundColor: "grey", height: "100%" }}
-            >
-              <div style={{ width: "100%", height: 340, minHeight: 260 }}>
-                <ResponsiveContainer width="100%" height="90%">
-                  <LineChart data={mergedHourly} margin={{ top: 8, right: 0, left: 0, bottom: 8 }}>
-                    <CartesianGrid stroke="rgba(255,255,255,0.12)" />
-                    <XAxis
-                      dataKey="time"
-                      stroke="#fff"
-                      tick={{ fill: "#fff", fontSize: 12 }}
-                      padding={{ right: 0 }}
-                    />
-                    <YAxis
-                      stroke="#fff"
-                      tick={{ fill: "#fff", fontSize: 12 }}
-                      label={{ value: "kWh", angle: -90, position: "insideLeft", fill: "#fff" }}
-                    />
-                    <Tooltip
-                      formatter={(v: any) => `${v} kWh`}
-                      contentStyle={{ backgroundColor: "#0b0b0b", borderColor: "#333" }}
-                      itemStyle={{ color: "#fff" }}
-                      labelStyle={{ color: "#fff" }}
-                    />
-                    <Legend formatter={(value) => <span style={{ color: "#fff" }}>{value}</span>} verticalAlign="top" />
-                    <Line dataKey="value" name="Total" stroke="#ffffff" strokeWidth={2.5} dot={false} />
-                    <Line dataKey="kitchen" name="Kitchen" stroke={COLORS[0]} strokeWidth={2} dot={{ r: 2 }} />
-                    <Line dataKey="living" name="Living Room" stroke={COLORS[1]} strokeWidth={2} dot={{ r: 2 }} />
-                    <Line dataKey="bedroom" name="Bedroom" stroke={COLORS[2]} strokeWidth={2} dot={{ r: 2 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-
-            </Card>
-          </Col>
-        </Row>
-      </Col >
-    </Row >
+        <Col span={24}>
+          <Card title="Additional Insights">
+            <Alert
+              message="Coming Soon"
+              description="Country/area average comparison will be displayed here."
+              type="info"
+              showIcon
+            />
+          </Card>
+        </Col>
+      </Row>
+    </div>
   );
 };
 
