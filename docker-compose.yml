@@ -1,0 +1,54 @@
+services:
+  db:
+    image: mysql:8
+    environment:
+      MYSQL_DATABASE: energy
+      MYSQL_USER: appuser
+      MYSQL_PASSWORD: apppass
+      MYSQL_ROOT_PASSWORD: rootpass
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "3306:3306"
+
+
+  backend:
+    build: ./backend
+    container_name: backend
+    environment:
+      DB_HOST: db
+      DB_USER: appuser
+      DB_PASSWORD: apppass
+      DB_NAME: energy
+      DB_PORT: 3306
+    depends_on:
+      - db
+    ports:
+      - "5000:5000"
+
+  frontend:
+    build: ./frontend
+    command: npm run dev
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  phpmyadmin:
+   image: phpmyadmin/phpmyadmin
+   container_name: phpmyadmin
+   restart: always
+   ports:
+     - "8080:80"
+   environment:
+    PMA_HOST: db
+    PMA_USER: appuser
+    PMA_PASSWORD: apppass
+   depends_on:
+     - db
+
+
+volumes:
+  db-data:
