@@ -1,4 +1,4 @@
-import { Card, Col, Row, Alert, Spin, Empty, Select, Statistic, Progress, Button } from "antd";
+import { Card, Col, Row, Alert, Spin, Empty, Select, Statistic, Progress, Modal, Table, Button } from "antd";
 import { useEffect, useState } from "react";
 import {
   ResponsiveContainer,
@@ -15,23 +15,24 @@ import {
   LineChart,
   Line
 } from "recharts";
-import { ArrowUpOutlined, ArrowDownOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { ArrowUpOutlined, ArrowDownOutlined, ThunderboltOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 
 const Dashboard = () => {
-  const [pieData, setPieData] = useState([]);
-  const [hourlyData, setHourlyData] = useState([]);
+  const [pieData, setPieData] = useState<any>([]);
+  const [hourlyData, setHourlyData] = useState<any>([]);
   const [summaryData, setSummaryData] = useState<any>(null);
-  const [gsiData, setGsiData] = useState([]);
-  const [gsiTimeRange, setGsiTimeRange] = useState('next24');
-  const [consumptionTimeRange, setConsumptionTimeRange] = useState('24h');
-  const [loading, setLoading] = useState(true);
+  const [gsiData, setGsiData] = useState<any>([]);
+  const [gsiTimeRange, setGsiTimeRange] = useState<any>('next24');
+  const [consumptionTimeRange, setConsumptionTimeRange] = useState<any>('24h');
+  const [loading, setLoading] = useState<any>(true);
   const [error, setError] = useState<any>(null);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState<any>(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem("token");
 
         if (!token) {
           setError("No authentication token found");
@@ -40,74 +41,76 @@ const Dashboard = () => {
         }
 
         const headers = {
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         };
 
-        // Fetch all dashboard data with time range parameter
+        // Fetch all dashboard data
         const [summaryRes, pieRes, hourlyRes, gsiRes] = await Promise.all([
           fetch(`http://localhost:3001/api/consumption/summary?range=${consumptionTimeRange}`, { headers }),
           fetch(`http://localhost:3001/api/consumption/by-room?range=${consumptionTimeRange}`, { headers }),
           fetch(`http://localhost:3001/api/consumption/hourly?range=${consumptionTimeRange}`, { headers }),
-          fetch("http://localhost:3001/api/gsi", { headers }).catch(() => null)
+          fetch("http://localhost:3001/api/gsi", { headers }).catch(() => null),
         ]);
 
-        let gsiJson: any = null;
-
-        // Parse GSI response once and store it
+        // Parse GSI data once
+        let gsiResult = null;
         if (gsiRes && gsiRes.ok) {
-          gsiJson = await gsiRes.json();
+          gsiResult = await gsiRes.json();
         }
 
+        // Summary
         if (summaryRes.ok) {
           const summary = await summaryRes.json();
-          console.log(summary)
-          setSummaryData(summary);
 
-          // If premium, calculate CO2 and green percentage
-          if (summary.premium === 1 && gsiJson) {
-            // Calculate average CO2 intensity from GSI data
-            if (gsiJson.forecast && Array.isArray(gsiJson.forecast)) {
-              const avgCO2 = gsiJson.forecast.reduce((sum: any, item: any) => sum + (item.co2_g_standard || 0), 0) / gsiJson.forecast.length;
-              const avgGSI = gsiJson.forecast.reduce((sum: any, item: any) => sum + (item.gsi || 0), 0) / gsiJson.forecast.length;
+          // Premium extras
+          if (summary.premium === 1 && gsiResult?.forecast) {
+            const forecast = gsiResult.forecast;
 
-              // Calculate total CO2 emissions (kWh * gCO2/kWh = gCO2, then convert to kg)
-              const totalCO2kg = (summary.total_consumption * avgCO2) / 1000;
+            const avgCO2 =
+              forecast.reduce((sum: any, item: any) => sum + (item.co2_g_standard || 0), 0) /
+              forecast.length;
 
-              setSummaryData({
-                ...summary,
-                total_co2_kg: totalCO2kg,
-                green_percentage: avgGSI
-              });
-            }
+            const avgGSI =
+              forecast.reduce((sum: any, item: any) => sum + (item.gsi || 0), 0) /
+              forecast.length;
+
+            const totalCO2kg = (summary.total_consumption * avgCO2) / 1000;
+
+            setSummaryData({
+              ...summary,
+              total_co2_kg: totalCO2kg,
+              green_percentage: avgGSI,
+            });
+          } else {
+            setSummaryData(summary);
           }
         }
 
+        // Pie data
         if (pieRes.ok) {
           const pie = await pieRes.json();
           setPieData(pie);
         }
 
+        // Hourly data
         if (hourlyRes.ok) {
           const hourly = await hourlyRes.json();
           setHourlyData(hourly);
         }
 
-        // Use the already parsed GSI data
-        if (gsiJson) {
-          const gsiResult = gsiJson;
+        // GSI transformed data (for chart)
+        if (gsiResult?.forecast) {
+          const transformed = gsiResult.forecast.map((item: any) => ({
+            time: new Date(item.timeStamp).toLocaleTimeString("de-DE", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            fullDate: new Date(item.timeStamp),
+            gsi: item.gsi,
+            co2: item.co2_g_standard,
+          }));
 
-          if (gsiResult.forecast && Array.isArray(gsiResult.forecast)) {
-            const transformedGsi = gsiResult.forecast.map((item: any) => ({
-              time: new Date(item.timeStamp).toLocaleTimeString('de-DE', {
-                hour: '2-digit',
-                minute: '2-digit'
-              }),
-              fullDate: new Date(item.timeStamp),
-              gsi: item.gsi,
-              co2: item.co2_g_standard
-            }));
-            setGsiData(transformedGsi);
-          }
+          setGsiData(transformed);
         }
 
         setLoading(false);
@@ -119,7 +122,7 @@ const Dashboard = () => {
     };
 
     fetchData();
-  }, [consumptionTimeRange]); // Re-fetch when time range changes
+  }, [consumptionTimeRange]);
 
   const COLORS = ["#8884d8", "#82ca9d", "#ffc658", "#ff7f7f", "#a28bd4", "#ff6b9d"];
 
@@ -144,6 +147,72 @@ const Dashboard = () => {
   };
 
   const filteredGsiData = getFilteredGsiData();
+
+  const featureComparison = [
+    {
+      key: '1',
+      feature: 'Room Breakdown (Pie Chart)',
+      free: <CheckOutlined style={{ color: '#52c41a', fontSize: 18 }} />,
+      premium: <CheckOutlined style={{ color: '#52c41a', fontSize: 18 }} />,
+    },
+    {
+      key: '2',
+      feature: 'Hourly/Daily Consumption Chart',
+      free: <CheckOutlined style={{ color: '#52c41a', fontSize: 18 }} />,
+      premium: <CheckOutlined style={{ color: '#52c41a', fontSize: 18 }} />,
+    },
+    {
+      key: '3',
+      feature: 'Total Consumption Tracking',
+      free: <CloseOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />,
+      premium: <CheckOutlined style={{ color: '#52c41a', fontSize: 18 }} />,
+    },
+    {
+      key: '4',
+      feature: 'Household Average Comparison',
+      free: <CloseOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />,
+      premium: <CheckOutlined style={{ color: '#52c41a', fontSize: 18 }} />,
+    },
+    {
+      key: '5',
+      feature: 'Green Energy Index (GSI)',
+      free: <CloseOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />,
+      premium: <CheckOutlined style={{ color: '#52c41a', fontSize: 18 }} />,
+    },
+    {
+      key: '6',
+      feature: 'CO₂ Emissions Tracking',
+      free: <CloseOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />,
+      premium: <CheckOutlined style={{ color: '#52c41a', fontSize: 18 }} />,
+    },
+    {
+      key: '7',
+      feature: 'Renewable Energy Percentage',
+      free: <CloseOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />,
+      premium: <CheckOutlined style={{ color: '#52c41a', fontSize: 18 }} />,
+    },
+  ];
+
+  const columns: any = [
+    {
+      title: 'Feature',
+      dataIndex: 'feature',
+      key: 'feature',
+      width: '60%',
+    },
+    {
+      title: 'Free',
+      dataIndex: 'free',
+      key: 'free',
+      align: 'center',
+    },
+    {
+      title: 'Premium',
+      dataIndex: 'premium',
+      key: 'premium',
+      align: 'center',
+    },
+  ];
 
   if (loading) {
     return (
@@ -328,12 +397,17 @@ const Dashboard = () => {
                   Unlock advanced analytics including consumption tracking, average comparison,
                   CO₂ emissions monitoring, and green energy insights!
                 </p>
-                <Button type="primary" size="large" style={{
-                  background: 'white',
-                  color: '#667eea',
-                  border: 'none',
-                  fontWeight: 'bold'
-                }}>
+                <Button
+                  type="primary"
+                  size="large"
+                  onClick={() => setUpgradeModalOpen(true)}
+                  style={{
+                    background: 'white',
+                    color: '#667eea',
+                    border: 'none',
+                    fontWeight: 'bold'
+                  }}
+                >
                   Upgrade Now
                 </Button>
               </div>
@@ -371,7 +445,7 @@ const Dashboard = () => {
                     label={({ name, value }: any) => `${name}: ${value.toFixed(1)} kWh`}
                     labelLine={false}
                   >
-                    {pieData.map((entry, idx) => (
+                    {pieData.map((entry: any, idx: any) => (
                       <Cell key={`cell-${idx}`} fill={COLORS[idx % COLORS.length]} />
                     ))}
                   </Pie>
@@ -485,6 +559,40 @@ const Dashboard = () => {
           </Col>
         )}
       </Row>
+
+      {/* Upgrade Modal */}
+      <Modal
+        title="Upgrade to Premium"
+        open={upgradeModalOpen}
+        onCancel={() => setUpgradeModalOpen(false)}
+        footer={null}
+        width={700}
+      >
+        <div style={{ marginBottom: 24 }}>
+          <h3>Feature Comparison</h3>
+          <Table
+            dataSource={featureComparison}
+            columns={columns}
+            pagination={false}
+            size="middle"
+            bordered
+          />
+        </div>
+
+        <Alert
+          message="Contact Us to Upgrade"
+          description={
+            <div>
+              <p>To upgrade your account to Premium, please contact us at:</p>
+              <p style={{ fontSize: 16, fontWeight: 'bold', color: '#1890ff', marginTop: 8 }}>
+                info@ecomax.com
+              </p>
+            </div>
+          }
+          type="info"
+          showIcon
+        />
+      </Modal>
     </div>
   );
 };

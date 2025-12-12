@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Row, Col, Menu, Card, Typography } from 'antd';
 import { BookOutlined } from '@ant-design/icons';
@@ -8,13 +9,31 @@ const Tutorials = () => {
     const [selectedTutorial, setSelectedTutorial] = useState('add-devices');
 
     const tutorials = {
+        'activate-premium': {
+            title: 'How to activate Premium access',
+            content: '1. Click on your profile in the top right corner\n2. Look for a button called "activate Premium"\n3. Click on the button'
+        },
+        'deactivate-premium': {
+            title: 'How to deactivate Premium Access',
+            content: '1. Click on your profile in the top right corner\n2. Look for a button called "deactivate Premium"\n3. Click on the button'
+        },
         'add-devices': {
             title: 'How to Add Devices',
-            content: 'EMPTY'
+            content: 'this is still a work in progress...'
         },
     };
 
     const menuItems = [
+        {
+            key: 'activate-premium',
+            icon: <BookOutlined />,
+            label: 'How to activate Premium Access',
+        },
+        {
+            key: 'deactivate-premium',
+            icon: <BookOutlined />,
+            label: 'How to deactivate Premium Access',
+        },
         {
             key: 'add-devices',
             icon: <BookOutlined />,
@@ -44,7 +63,7 @@ const Tutorials = () => {
                         <Title level={3}>
                             {tutorials[selectedTutorial as keyof typeof tutorials].title}
                         </Title>
-                        <Paragraph style={{ fontSize: 16, lineHeight: 1.8 }}>
+                        <Paragraph style={{ whiteSpace: 'pre-line', fontSize: 16, lineHeight: 1.8 }}>
                             {tutorials[selectedTutorial as keyof typeof tutorials].content}
                         </Paragraph>
                     </Card>

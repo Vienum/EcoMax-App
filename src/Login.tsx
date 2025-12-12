@@ -17,24 +17,24 @@ const Login = ({ setLoggedIn, switchToRegister }: any) => {
             });
 
             if (!res.ok) {
-                const errorText = await res.text();
+                const errorData = await res.json(); // Change from res.text() to res.json()
+                const errorMessage = errorData.error || errorData.message || "Login failed";
 
                 // Map backend errors to form fields
-                if (errorText.toLowerCase().includes("username")) {
+                if (errorMessage.toLowerCase().includes("username")) {
                     setFieldErrors({
-                        username: errorText
+                        username: errorMessage
                     });
-                } else if (errorText.toLowerCase().includes("password")) {
+                } else if (errorMessage.toLowerCase().includes("password")) {
                     setFieldErrors({
-                        password: errorText
+                        password: errorMessage
                     });
                 } else {
-                    // fallback: attach to a general field (or both)
+                    // fallback: attach to a general field
                     setFieldErrors({
-                        username: errorText
+                        username: errorMessage
                     });
                 }
-
                 setLoading(false);
                 return;
             }

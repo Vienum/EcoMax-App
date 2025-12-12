@@ -1,4 +1,4 @@
- const express = require("express");
+const express = require("express");
 const cors = require("cors");
 const sqlite3 = require("sqlite3").verbose();
 const bcrypt = require("bcrypt");
@@ -256,6 +256,7 @@ app.delete("/api/room/:room_id", authenticateToken, (req, res) => {
 app.get("/api/device/:device_id/readings", authenticateToken, (req, res) => {
   const { device_id } = req.params;
   const userId = req.user_id;
+  const timeRange = req.query.range || '24h';
 
   // Verify the device belongs to the user
   db.get(
@@ -265,16 +266,116 @@ app.get("/api/device/:device_id/readings", authenticateToken, (req, res) => {
       if (err) return res.status(500).json({ error: err.message });
       if (!device) return res.status(404).json({ error: "Device not found" });
 
-      // Fetch last 24 hours of readings
+      // Determine time condition and grouping
+      let timeCondition = '';
+      let groupBy = '';
+      
+      switch(timeRange) {
+        case '24h':
+          timeCondition = "AND timestamp >= datetime('now', '-1 day')";
+          groupBy = "strftime('%H:00', timestamp)";
+          break;
+        case '7d':
+          timeCondition = "AND timestamp >= datetime('now', '-7 days')";
+          groupBy = "strftime('%Y-%m-%d', timestamp)";
+          break;
+        case '30d':
+          timeCondition = "AND timestamp >= datetime('now', '-30 days')";
+          groupBy = "strftime('%Y-%m-%d', timestamp)";
+          break;
+        default:
+          timeCondition = "AND timestamp >= datetime('now', '-1 day')";
+          groupBy = "strftime('%H:00', timestamp)";
+      }
+
+      // Fetch readings with grouping
       db.all(
-        `SELECT timestamp, kwh FROM device_readings
-         WHERE device_id = ?
-         AND timestamp >= datetime('now', '-24 hours')
-         ORDER BY timestamp ASC`,
+        `SELECT ${groupBy} as time, SUM(kwh) as kwh 
+         FROM device_readings
+         WHERE device_id = ? ${timeCondition}
+         GROUP BY ${groupBy}
+         ORDER BY time ASC`,
         [device_id],
         (err, readings) => {
           if (err) return res.status(500).json({ error: err.message });
           res.json(readings);
+        }
+      );
+    }
+  );
+});
+
+// Get room-specific consumption data
+app.get("/api/room/:room_id/consumption", authenticateToken, (req, res) => {
+  const { room_id } = req.params;
+  const userId = req.user_id;
+  const timeRange = req.query.range || '24h';
+
+  // Verify the room belongs to the user
+  db.get(
+    `SELECT * FROM rooms WHERE room_id = ? AND user_id = ?`,
+    [room_id, userId],
+    (err, room) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!room) return res.status(404).json({ error: "Room not found" });
+
+      // Determine time condition and grouping
+      let timeCondition = '';
+      let groupBy = '';
+      
+      switch(timeRange) {
+        case '24h':
+          timeCondition = "AND dr.timestamp >= datetime('now', '-1 day')";
+          groupBy = "strftime('%H:00', dr.timestamp)";
+          break;
+        case '7d':
+          timeCondition = "AND dr.timestamp >= datetime('now', '-7 days')";
+          groupBy = "strftime('%Y-%m-%d', dr.timestamp)";
+          break;
+        case '30d':
+          timeCondition = "AND dr.timestamp >= datetime('now', '-30 days')";
+          groupBy = "strftime('%Y-%m-%d', dr.timestamp)";
+          break;
+        default:
+          timeCondition = "AND dr.timestamp >= datetime('now', '-1 day')";
+          groupBy = "strftime('%H:00', dr.timestamp)";
+      }
+
+      // Get devices in room with their consumption data
+      db.all(
+        `SELECT 
+          d.device_id,
+          d.device_name,
+          ${groupBy} as time,
+          SUM(dr.kwh) as kwh
+         FROM devices d
+         LEFT JOIN device_readings dr ON d.device_id = dr.device_id ${timeCondition}
+         WHERE d.room_id = ? AND d.user_id = ?
+         GROUP BY d.device_id, d.device_name, ${groupBy}
+         ORDER BY time ASC`,
+        [room_id, userId],
+        (err, readings) => {
+          if (err) return res.status(500).json({ error: err.message });
+          
+          // Transform data for easier frontend consumption
+          const deviceMap = {};
+          readings.forEach(row => {
+            if (!deviceMap[row.device_id]) {
+              deviceMap[row.device_id] = {
+                device_id: row.device_id,
+                device_name: row.device_name,
+                data: []
+              };
+            }
+            if (row.time) {
+              deviceMap[row.device_id].data.push({
+                time: row.time,
+                kwh: row.kwh || 0
+              });
+            }
+          });
+
+          res.json(Object.values(deviceMap));
         }
       );
     }
