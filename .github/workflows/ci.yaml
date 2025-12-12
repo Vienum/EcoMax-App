@@ -56,7 +56,7 @@ jobs:
 
       - name: Run tests
         run: |
-          echo "Add your test commands here"
+          echo "Testing"
 
       - name: Tear down
         run: docker compose -f docker-compose.yml down
