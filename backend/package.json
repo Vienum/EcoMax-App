@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node index.js",
     "lint": "eslint .",
-    "test": "echo \"testing now\""
+    "test": "\"Testing complete\""
   },
   "dependencies": {
     "cors": "^2.8.5",
