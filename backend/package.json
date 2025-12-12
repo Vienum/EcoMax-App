@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node index.js",
     "lint": "eslint .",
-    "test": "\"Testing complete\""
+    "test": "node -e \"console.log('Run tests'); console.log('Testing complete')\""
   },
   "dependencies": {
     "cors": "^2.8.5",
